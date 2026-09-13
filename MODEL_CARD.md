@@ -1,0 +1,149 @@
+---
+license: mit
+model_card_spec: "1.1"
+pipeline_tag: object-detection
+base_model: microsoft/table-transformer-detection
+date_published: "2022-10-14"
+date_published_source: "Hugging Face Hub repository creation date of the exact hosted checkpoint (`createdAt`, https://huggingface.co/api/models/microsoft/table-transformer-detection); the PubTables-1M paper (arXiv:2110.00061) and the microsoft/table-transformer code release date from 2021-10, but the Transformers-format checkpoint pinned here is the 2022-10 Hub conversion"
+---
+
+# Table Transformer Detection, DETR-R18 on PubTables-1M (DIMER package v0.1.0) — Table Detection on Document Pages (Inference)
+
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-microsoft%2Ftable--transformer--detection-ffcc4d?style=flat)](https://huggingface.co/microsoft/table-transformer-detection)
+[![Upstream GitHub](https://img.shields.io/badge/Upstream%20GitHub-microsoft%2Ftable--transformer-181717?style=flat&logo=github&logoColor=white)](https://github.com/microsoft/table-transformer)
+[![arXiv Paper](https://img.shields.io/badge/arXiv-2110.00061-b31b1b.svg)](https://arxiv.org/abs/2110.00061)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+> [!WARNING]
+> ⚠️ **Provided for research, training, and evaluation purposes only.** Model weights are redistributed unmodified under their upstream license, which controls your use, including any commercial use or redistribution; the accompanying code and notebooks are released under this repository's license. All of it is supplied **"as is"**, without warranty of any kind, and has not been validated for production, clinical, or safety-critical use. Running the notebooks downloads third-party weights and datasets governed by their own licenses and consumes compute on your own Colab/Kaggle account. To the maximum extent permitted by law, the maintainers of this repository and the DIMER platform accept no liability for any damages arising from their use. Hosting implies no affiliation with or endorsement by the original authors.
+
+---
+
+## Interactive Colab Tutorials
+
+This pipeline provides a ready-to-run interactive Google Colab notebook that exercises the repository's public API end to end — stage and verify the pinned upstream revision in a fresh runtime, validate an input, run the task, and inspect and export the outputs:
+
+- **Task Inference Tutorial**:  
+  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kurtvalcorza/table-transformer-detection-pipeline/blob/main/tutorials/table_transformer_detection_colab.ipynb) [`table_transformer_detection_colab.ipynb`](https://github.com/kurtvalcorza/table-transformer-detection-pipeline/blob/main/tutorials/table_transformer_detection_colab.ipynb)  
+  *Table detection on a page rendered in code with the pinned `microsoft/table-transformer-detection` weights: score-ordered xyxy boxes labelled `table`/`table rotated` under a caller-owned `threshold`; `box_iou` against the rendered tables as sanity evidence only, no mAP.*
+
+---
+
+#### Description
+
+`microsoft/table-transformer-detection` is the Transformers-format release of the Table Transformer detection model from PubTables-1M (Smock, Pesala and Abraham, arXiv:2110.00061), converted by the Hugging Face team and pinned here to revision `2357cbe2b5a5d1c03e54f32764f06058933b65ab`. The snapshot `config.json` declares `TableTransformerForObjectDetection` with `backbone: resnet18`: a DETR (Detection Transformer) whose convolutional ResNet-18 backbone feeds a 6-layer encoder and 6-layer decoder (`d_model` 256, 8 attention heads, feed-forward width 2048) using DETR's "normalize before" layer-norm placement, and whose decoder holds exactly 15 learned object queries (`num_queries`). At inference the model reads one page image resized to 800 px on its shortest edge (`preprocessor_config.json`, `DetrFeatureExtractor`, ImageNet mean/std) and emits, per query, a normalised box and a softmax over three outcomes — `table`, `table rotated` (`id2label`) and *no object*; the processor keeps the queries whose class score reaches a threshold and maps their boxes back to input pixels. Nothing is trained or adapted here. What this repository adds is packaging: `verify_snapshot` and `stage_missing_files` (manifest digest checking and fresh-clone staging), `TableTransformerDetectionPipeline.from_pretrained` (verified local loading with `trust_remote_code=False` and `use_pretrained_backbone=False`, which stops the timm backbone from fetching ImageNet weights the checkpoint overwrites anyway), `detect` (input validation, threshold checks, sorted pixel-space output), the `validate_inputs` and `evaluation_report` stage helpers, and `box_iou`.
+
+#### Intended Use and Limitations
+
+The uses below are the ones the package was built to support; everything else is either out of scope (§Out-of-scope use cases) or prohibited (§Use cases).
+
+###### Primary Intended Uses
+
+The task is table detection on document page images: input one page (`PIL.Image.Image`, any mode, converted to RGB) and a threshold; output a list of at most 15 detections, each an xyxy pixel box, a `label` of `table` or `table rotated`, and the model's softmax `score`, sorted by score. Envisioned applications are the first stage of table extraction from born-digital PDFs and reports — locating the table regions that a structure-recognition model (the sibling `table-transformer-structure-pipeline`) then decomposes into rows, columns and cells — page triage that flags which pages of a document contain tables, and cropping table regions for OCR or downstream analytics. Within DIMER the pipeline is an inference component and a zero-configuration baseline for document layout work, not a certified extractor for any specific document family.
+
+###### Primary Intended Users
+
+Intended users are machine-learning engineers, document-processing developers, and data analysts integrating table localisation into research prototypes, internal enterprise document tooling, or the DIMER workbench. A user is expected to understand that the score is the model's own softmax over two table classes and "no object" — a ranking signal within one page, not a calibrated probability that a region is a table on their documents — that the threshold trades recall against false boxes and must be tuned per document family, that the model was trained on rendered scientific-article PDFs (PubTables-1M) so scans, photographs, forms and non-Latin layouts are distribution shifts, that a `table rotated` label means the table's text runs vertically and nothing is rotated for them, and that mean average precision can only be measured on a labelled page set they supply. Users who need cell structure, cell text, figure or chart detection, or reading order are expected to know none of that is provided here.
+
+###### Out-of-scope use cases
+
+1. **Capability boundary:** no table structure (rows, columns, headers, cells — use the sibling structure-recognition pipeline on a detected crop), no OCR or cell text, no detection of figures, charts, text blocks or page regions other than tables, no rotation correction, no multi-page or document-level reasoning. Only two labels exist; a caption, a matrix in an equation or a key–value form may or may not be called a table, and the pipeline cannot say which.
+2. **Input boundary:** `detect` rejects non-PIL images (`TypeError`), sides below `MIN_IMAGE_SIDE = 16` px or above `MAX_IMAGE_SIDE = 4096` px, and thresholds outside `[0, 1]` (`ValueError`). One page per call; the backend can return at most `MAX_DETECTIONS = 15` boxes because the decoder has 15 queries, so a page with more tables than that is under-counted by construction. Every page is resized to 800 px on its shortest edge, so tables that are small at that scale (a few dozen pixels) are unlikely to be found.
+3. **Input boundary:** the training corpus is PubTables-1M — pages rendered from PubMed Central scientific articles. Scanned or photographed pages (skew, shading, noise), spreadsheets rendered as images, slide decks, invoices, forms and non-Latin scripts fall outside what the upstream authors evaluated and what this repository measured; results on them are undefined, not merely degraded.
+4. **Decision boundary:** not for autonomous decisions that act on the presence or absence of a table — regulatory filing checks, automated financial-statement extraction feeding a decision, contract clause detection — without a human reviewing the detections and a locally measured precision/recall on the deployment's own pages.
+
+#### Factors
+
+###### Groups
+
+This pipeline is not human-centric by design: it localises tables on page images and never classifies, identifies or scores people. The training data (PubTables-1M, built from PubMed Central Open Access articles per the paper) contains no evaluation groups in the demographic sense, and neither the upstream authors nor this repository audited it for anything of the kind. What does vary is the document population: the corpus is English-language scientific typesetting, so pages from other languages, scripts, publishers, eras or production tools (hand-drawn tables, typewriter scans, right-to-left layouts) are the groups whose recall is unknown, not known to be equal. Where pages carry personal data — medical records, HR tables, financial statements about individuals — the pipeline's output can localise that data for downstream extraction; the operator who processes such documents is responsible for a fairness and privacy audit on their own page set, stratified by document family, before relying on the output.
+
+###### Instrumentation
+
+The upstream training data was produced by rendering PDF articles from PubMed Central to page images and aligning table annotations from the publishers' XML, so the "instrument" is a PDF renderer over born-digital typesetting: crisp glyphs, straight rules, consistent margins, no sensor noise. Inference pages arrive from whatever produced them — a PDF renderer at some DPI, a flatbed scanner, a phone camera — and resolution, skew, JPEG artefacts, shading and bleed-through all change the visual evidence; the 800 px resize (`preprocessor_config.json`, bilinear, ImageNet mean/std) discards detail below that scale on every page regardless of its source. The pipeline validates type and size only; it cannot detect a low-DPI render, a skewed scan or a page whose "table" is an embedded raster image, and the synthetic tutorial page (Pillow's bundled font, ruled lines) is itself a rendering instrument whose glyphs differ from PubMed Central typesetting.
+
+###### Environment
+
+Operating environment: Python 3.12 with `torch==2.14.0`, `transformers==4.57.6`, `timm==1.0.29` (the ResNet-18 backbone is constructed through timm), `safetensors==0.8.0`, `numpy==2.5.3`, `pillow==11.3.0`, float32 on CPU; CUDA is used automatically when visible but was not exercised for this card. Measured on the reference machine with the GPU hidden (`CUDA_VISIBLE_DEVICES=-1`) and the Hub offline (`HF_HUB_OFFLINE=1`): `verify_snapshot` on the 4-file, 115 MB snapshot, load 4.81 s, an 850×1100 rendered page 0.17 s, a 4096×4096 blank page 0.33 s — cost is dominated by the fixed 800 px working resolution and the 115 MB model, not by the caller's pixel count. Data environment: the model assumes a rendered document page in which tables are ruled or aligned regions of text distinct from prose, as in scientific articles; the synthetic tutorial page satisfies that assumption and is where the measured behaviour holds. Scans, photographs, dense multi-column layouts, borderless tables and non-Latin scripts violate it to degrees this repository did not measure, and the pipeline reports no signal when they do.
+
+#### Metrics
+
+###### Performance Measures
+
+The pipeline reports no accuracy measure. Each detection carries `score`, the query's softmax probability for its winning table class under the model's own three-way head — a ranking signal within a page, not a probability that the region is a table on the deployment's documents and not a measure of correctness. The repository ships `box_iou(a, b)`, the intersection-over-union of two xyxy boxes, because it is the primitive every detection metric is built from; mean average precision itself is not implemented, since it needs a labelled page set with one convention for matching and IoU thresholds that the caller must choose. To evaluate, the caller supplies ground-truth table boxes and computes precision/recall or mAP at their chosen IoU with `box_iou`. The public `evaluation_report(result, ground_truth_boxes=None)` stage returns that report in machine-readable form: one `box_iou` entry per supplied reference box (its best-overlapping detection and that detection's label) with the verdict `sample-sanity`, or the verdict `not-measurable` naming the labelled page set that would be required when no reference is supplied. The upstream paper's PubTables-1M detection AP is an upstream-reported number that this pipeline does not reproduce or claim.
+
+###### Decision thresholds
+
+One threshold is applied and exposed as a module constant: `DETECTION_THRESHOLD = 0.9` keeps a query only if its softmax score for `table` or `table rotated` is at least 0.9; below it the query is discarded, and there is no non-maximum suppression beyond what DETR's set prediction already provides. This is the value the Transformers documentation example for Table Transformer passes to `post_process_object_detection`; it was not tuned by this repository and is not calibrated for any document family. It can be overridden per call (`detect(..., threshold=)`), and the smoke run shows the effect is domain-dependent (the synthetic page returned the same two boxes at 0.9 and 0.5, both scoring above 0.99). A deployment owns tuning it on its own labelled pages: lower the threshold when a missed table costs more than a spurious box (a reviewer or the structure model will discard extras), raise it when a false table triggers an extraction that is acted on, and re-tune whenever the document source changes.
+
+###### Approaches to uncertainty and variability
+
+This repository reports no central metric value and therefore no dispersion: the smoke run records timings, box coordinates and scores on one synthetic page, not accuracy. Run-to-run variability comes only from floating-point kernel selection across CPU builds and accelerators; there is no sampling and no seed to set, so a fixed input on fixed hardware is repeatable but not guaranteed bitwise-identical across machines, and the synthetic page's own bytes depend on the Pillow build's bundled font. The `score` is the model's softmax, not a calibrated confidence: a 0.99 is not a 99 % chance the box is a table on your pages. On the synthetic page the model's boxes were systematically inset relative to the drawn rules — they excluded the last column and bottom row of each table, giving `box_iou` 0.80 and 0.66 rather than ~1.0 — which is an annotation-convention effect between PubTables-1M boxes and hand-drawn rules, not a quantity the pipeline estimates. A caller who needs calibrated confidences must fit a calibration map on their own labelled detections; a caller who needs an uncertainty estimate for a metric must supply labelled pages and compute it over many pages or bootstrap resamples themselves.
+
+#### Ethical considerations and biases
+
+No external ethics board, red-team, or population-specific clearance reviewed this repository or, to our knowledge, the upstream checkpoint; nothing below should be read as implying one.
+
+###### Data
+
+The snapshot README states only that the model was trained on PubTables-1M; the paper describes that corpus as roughly one million pages rendered from PubMed Central Open Access articles with table annotations derived from publisher XML, distributed under the articles' open-access licences. Scientific articles can contain tables of patient-level or survey data, so personal data in the training corpus is not ruled out; it is not enumerated by the upstream authors and was not audited here. This repository distributes code, tests, and documentation; it does not distribute the 115,317,516-byte `model.safetensors`, which is staged locally under `weights/table-transformer-detection/` and git-ignored, and it ships no sample documents — the tutorial page is rendered in code. The operator must audit the pages they submit for personal, proprietary, or otherwise restricted content; the pipeline performs no such check and will localise a table of names and salaries as readily as a table of measurements.
+
+###### Human Life
+
+This pipeline is not intended for decisions in health, safety, criminal justice, employment, credit, or housing, and it has not been validated or certified for any of them by this repository, the upstream authors, or any regulator. Foreseeable but unintended sensitive uses — locating tables in medical records or clinical trial reports for automated extraction, in financial statements for lending or audit decisions, in HR or legal documents for screening — would be admissible only with human review of the detections and of what is extracted from them, a locally measured precision/recall on the deployment's own labelled pages, a documented threshold policy, and whatever regulatory clearance the domain requires.
+
+###### Mitigations
+
+- **Supply-chain integrity:** `MODEL_REVISION` is a 40-hex commit; `stage_missing_files` refuses a manifest whose `modelId`/`revision` differ from the package constants and fetches only manifest-listed files at that revision when `allow_download=True`; `verify_snapshot` then checks all 4 listed files' byte sizes and SHA-256 before any load; `from_pretrained` loads only from the verified directory with `local_files_only=True`, always passes `trust_remote_code=False`, and passes `use_pretrained_backbone=False` so the timm backbone never contacts the Hub for ImageNet weights (the smoke run loaded with `HF_HUB_OFFLINE=1`). The upstream `pytorch_model.bin` is not listed, staged or loaded. A test flips one hex digit of a manifest digest and asserts the loader refuses; another asserts a foreign manifest is refused; the import-boundary tests assert that a missing or tampered snapshot is refused before `torch` or `transformers` is imported.
+- **Input integrity:** the public `validate_inputs(image, *, threshold)` stage applies exactly the checks `detect` applies (both route through one shared private checker) and returns an input manifest recording the schema, the ceilings, the observed input and the verdict; `validate_image` rejects non-PIL inputs and sides outside 16–4096 px; thresholds outside `[0, 1]` (and booleans) are rejected; `detect` raises on a malformed backend detection, an unknown label, or more than 15 boxes.
+- **Reproducibility:** exact `==` pins in `pyproject.toml`; every result carries `model_id`, `model_revision` and the threshold used.
+- **Refusals:** no batching, no download without the explicit flag, no threshold default hidden inside the runner, no pickle deserialisation.
+- No statistical mitigation (class balancing, subsampling) applies: no training happens in this repository.
+
+###### Risks and harms
+
+- **Missed tables:** borderless, small, rotated-and-unlabelled, or image-embedded tables fall below the threshold or outside the two classes; whoever relies on completeness (compliance extraction, data mining) bears the harm; likely on scans and non-scientific layouts; magnitude depends on what the missing data feeds.
+- **Spurious tables:** aligned prose, code listings, forms or figures with gridlines can clear the threshold; the downstream extractor bears the harm as garbage input; likely on forms and dashboards.
+- **Under-counting by construction:** at most 15 boxes per page; a dense page with more tables loses the rest silently — the operator bears the harm and the pipeline gives no signal.
+- **Inset boxes:** the detector's box convention differs from a human's ruled outline (observed on the synthetic page); a crop that cuts the last column feeds the structure model incomplete input.
+- **Automation bias:** clean boxes with 0.99 scores invite trust that a softmax over one page has not earned.
+- **Privacy exposure:** pages containing personal or confidential tables are processed without any content check and their tables are made easier to extract.
+- **Bias amplification:** any layout convention the scientific corpus under-represents (non-Latin scripts, non-Western publishers, historical typesetting) is reproduced as uneven recall, undetected because no per-family evaluation exists.
+- **Resource use:** small model (115 MB, ~0.2 s per page on the reference CPU); a page stream can still saturate a shared host.
+
+###### Use cases
+
+Prohibited even where the model would work: locating tables in order to extract personal data for surveillance, profiling, social scoring, or unlawful discrimination in employment, housing, credit, insurance, education, or healthcare access; extracting data from documents the operator has no right to process or from paywalled or licence-restricted publications in breach of their terms; deceptive uses that present detections as verified document facts or as evidence; and any use that violates the upstream MIT licence terms, the DIMER deployment terms, or the consent and data-protection obligations attached to the pages processed. Autonomous high-consequence actions triggered by an unreviewed detection are prohibited by the intended-use contract above.
+
+## Immutable provenance
+
+- Model: `microsoft/table-transformer-detection`
+- Revision: `2357cbe2b5a5d1c03e54f32764f06058933b65ab`
+- Snapshot manifest: `weights/table-transformer-detection/dimer-base-manifest.json`, 4 files, `totalBytes` 115320191
+- `model.safetensors` SHA-256: `8f1aa73170102c038d40155e2734b343bf07e0fe12594228a8590943b01dccf7` (115,317,516 bytes)
+- `config.json` SHA-256: `ed5b93df2c3a59d473ddea853553a6d545d52bd4e9f8f72bf40b8a974aba4c1d` (1,228 bytes)
+- Weight format: SafeTensors; loader `TableTransformerForObjectDetection.from_pretrained(<dir>, revision=MODEL_REVISION, local_files_only=True, trust_remote_code=False, use_pretrained_backbone=False)` with `AutoImageProcessor` (`DetrImageProcessor`) from the same directory. The upstream `pytorch_model.bin` is not part of the snapshot.
+
+## Input/output contract
+
+- `TableTransformerDetectionPipeline.from_pretrained(device=None, weights_dir=None, allow_download=False)` — stages missing manifest files (only with `allow_download=True`), verifies digests, loads; `device` defaults to `cuda:0` when visible, else `cpu`.
+- `detect(image, *, threshold=0.9) -> dict` with keys `detections` (list of `{"box": [x0, y0, x1, y1], "label": "table" | "table rotated", "score": float}` in input-pixel coordinates, sorted by descending score, at most 15 entries), `threshold`, `width`, `height`, `model_id`, `model_revision`.
+- Ceilings: `MIN_IMAGE_SIDE = 16`, `MAX_IMAGE_SIDE = 4096`, `MAX_DETECTIONS = 15`, `LABELS = ("table", "table rotated")`.
+- `box_iou(a, b) -> float` on xyxy boxes; `validate_inputs(image, *, threshold, names) -> dict`; `evaluation_report(result, ground_truth_boxes=None, *, sample_kind) -> dict`; `verify_snapshot(path=None) -> dict`; `stage_missing_files(path=None, *, allow_download=False, downloader=None) -> list[str]`.
+
+## Runtime
+
+- Pins: `torch==2.14.0`, `transformers==4.57.6`, `timm==1.0.29`, `safetensors==0.8.0`, `numpy==2.5.3`, `pillow==11.3.0`, `huggingface-hub==0.36.2`; Python 3.12.
+- Precision: float32; preprocessing resize to shortest edge 800 px (longest edge capped at 800), bilinear, ImageNet mean/std (`DetrImageProcessor` from the snapshot).
+- Measured 2026-09-13 in the Windows venv (`torch 2.14.0+cu130`) with `CUDA_VISIBLE_DEVICES=-1` and `HF_HUB_OFFLINE=1`, device `cpu`: `verify_snapshot` (4 files, 115 MB); load 4.81 s; `detect` on a synthetic 850×1100 page rendered with Pillow's bundled font (heading, two paragraphs, a wide 8×5 ruled table at [70, 330, 780, 660] and a small 5×3 ruled table at [70, 760, 430, 990]) at the default threshold 0.9 → 2 detections in 0.17 s: `table` [75.7, 781.7, 361.3, 974.0] score 0.9985, `table` [75.4, 341.9, 692.2, 646.4] score 0.9973, `box_iou` 0.801 and 0.663 against the drawn boxes (the model's boxes exclude the last column and bottom row of each table); same page at threshold 0.5 → identical 2 boxes in 0.11 s; 4096×4096 blank page → 0 detections in 0.33 s. An earlier synthetic page built from bar strokes instead of rendered text produced one `table rotated` box at 0.952 overlapping the first table (IoU 0.35) and missed the second — the model wants text-like content, which is why the tutorial renders words.
+- Tutorial execution: `tutorials/table_transformer_detection_colab.ipynb` ran top-to-bottom in a fresh local kernel (all 8 code cells, 19.9 s, snapshot staged from the Hub by the carried `stage_missing_files`); recorded in `docs/release-verification.md` as pre-flight, not supported-runtime evidence.
+- Tests: `pytest -q -o addopts= tests` — offline, no weights required; `ruff check src tests tools` clean.
+- Not executed: CUDA path, half precision, any precision/recall measurement against labelled pages, scans or photographs.
+
+## References
+
+- Smock, Pesala, Abraham. PubTables-1M: Towards Comprehensive Table Extraction From Unstructured Documents. CVPR 2022. https://arxiv.org/abs/2110.00061
+- Carion et al. End-to-End Object Detection with Transformers (DETR). ECCV 2020. https://arxiv.org/abs/2005.12872
+- Upstream code: https://github.com/microsoft/table-transformer
+- Upstream card: https://huggingface.co/microsoft/table-transformer-detection
+- Transformers `TableTransformer` documentation: https://huggingface.co/docs/transformers/model_doc/table-transformer
