@@ -7,7 +7,7 @@ date_published: "2022-10-14"
 date_published_source: "Hugging Face Hub repository creation date of the exact hosted checkpoint (`createdAt`, https://huggingface.co/api/models/microsoft/table-transformer-detection); the PubTables-1M paper (arXiv:2110.00061) and the microsoft/table-transformer code release date from 2021-10, but the Transformers-format checkpoint pinned here is the 2022-10 Hub conversion"
 ---
 
-# Table Transformer Detection, DETR-R18 on PubTables-1M (DIMER package v0.1.0) — Table Detection on Document Pages (Inference)
+# Table Transformer Detection, DETR-R18 on PubTables-1M — Table Detection on Document Pages (Inference)
 
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-microsoft%2Ftable--transformer--detection-ffcc4d?style=flat)](https://huggingface.co/microsoft/table-transformer-detection)
 [![Upstream GitHub](https://img.shields.io/badge/Upstream%20GitHub-microsoft%2Ftable--transformer-181717?style=flat&logo=github&logoColor=white)](https://github.com/microsoft/table-transformer)
