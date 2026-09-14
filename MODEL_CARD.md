@@ -2,6 +2,7 @@
 license: mit
 model_card_spec: "1.1"
 pipeline_tag: object-detection
+task: "Object Detection - Table Detection"
 base_model: microsoft/table-transformer-detection
 date_published: "2022-10-14"
 date_published_source: "Hugging Face Hub repository creation date of the exact hosted checkpoint (`createdAt`, https://huggingface.co/api/models/microsoft/table-transformer-detection); the PubTables-1M paper (arXiv:2110.00061) and the microsoft/table-transformer code release date from 2021-10, but the Transformers-format checkpoint pinned here is the 2022-10 Hub conversion"
