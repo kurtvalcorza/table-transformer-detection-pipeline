@@ -25,6 +25,8 @@ import io
 import json
 import random
 import re
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from collections.abc import Mapping, Sequence
@@ -1404,14 +1406,44 @@ def image_url(path: str) -> str:
     return f"{CORPUS_BASE_URL}{path}"
 
 
+FETCH_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+FETCH_MAX_ATTEMPTS = 6
+FETCH_SPACING_SECONDS = 0.5  # polite spacing between requests to the image host
+
+
+def _fetch_with_backoff(url: str, *, sleep: Any = time.sleep) -> bytes:
+    """GET `url`; on a throttled or transient status retry with exponential backoff, honouring `Retry-After`.
+
+    Any other status, a digest mismatch (checked by the caller) or exhaustion of the attempts raises.
+    """
+    delay = 2.0
+    for attempt in range(1, FETCH_MAX_ATTEMPTS + 1):
+        request = urllib.request.Request(url, headers={"User-Agent": "dimer-table-transformer-tutorial/1.0"})
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:  # noqa: S310 (pinned https URL)
+                return response.read()
+        except urllib.error.HTTPError as error:
+            if error.code not in FETCH_RETRY_STATUSES or attempt == FETCH_MAX_ATTEMPTS:
+                raise
+            retry_after = error.headers.get("Retry-After") if error.headers is not None else None
+            wait = delay
+            if retry_after is not None and re.fullmatch(r"\d+(\.\d+)?", retry_after.strip()):
+                wait = max(wait, float(retry_after))
+            sleep(min(wait, 120.0))
+            delay *= 2
+    raise RuntimeError("unreachable")  # pragma: no cover
+
+
 def fetch_corpus(*, cache_dir: str | Path | None = None, fetcher: Any = None) -> dict[str, bytes]:
     """Return every pinned photograph (bytes keyed by record id) from the cache or the Open Food Facts host.
 
-    Every file is refused on a byte-size or SHA-256 mismatch against `SAMPLE_RECORDS`.
+    Every file is refused on a byte-size or SHA-256 mismatch against `SAMPLE_RECORDS`. Network fetches are
+    spaced `FETCH_SPACING_SECONDS` apart and retried with backoff on 429 / 5xx (the host throttles bursts).
     """
     cache = Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE_DIR
     cache.mkdir(parents=True, exist_ok=True)
     out = {}
+    fetched_any = False
     for rid, _barcode, path, _w, _h, size, digest, _boxes, _cats in SAMPLE_RECORDS:
         local = cache / f"{rid}.jpg"
         data = local.read_bytes() if local.is_file() else b""
@@ -1420,11 +1452,10 @@ def fetch_corpus(*, cache_dir: str | Path | None = None, fetcher: Any = None) ->
             if fetcher is not None:
                 data = fetcher(url)
             else:
-                request = urllib.request.Request(
-                    url, headers={"User-Agent": "dimer-table-transformer-tutorial/1.0"}
-                )
-                with urllib.request.urlopen(request, timeout=180) as response:  # noqa: S310 (pinned https URL)
-                    data = response.read()
+                if fetched_any:
+                    time.sleep(FETCH_SPACING_SECONDS)
+                data = _fetch_with_backoff(url)
+                fetched_any = True
             if len(data) != size or _sha256_bytes(data) != digest:
                 raise ValueError(
                     f"{rid} ({path}): fetched {len(data)} bytes with sha256 {_sha256_bytes(data)[:16]}…, "

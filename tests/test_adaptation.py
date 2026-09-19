@@ -133,6 +133,64 @@ def test_pinned_record_table_is_complete_and_traceable():
     assert sum(SAMPLE_SPLIT.values()) == 119 and set(SAMPLE_SPLIT) == {"train", "validation", "test"}
 
 
+def test_fetch_with_backoff_retries_throttled_responses_and_honours_retry_after(monkeypatch):
+    import email.message
+    import urllib.error
+
+    calls = []
+    sleeps = []
+
+    class _Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def fake_urlopen(request, timeout):
+        calls.append(request.full_url)
+        if len(calls) == 1:
+            headers = email.message.Message()
+            headers["Retry-After"] = "7"
+            raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests", headers, None)
+        if len(calls) == 2:
+            raise urllib.error.HTTPError(request.full_url, 503, "Service Unavailable", email.message.Message(), None)
+        return _Response(b"payload")
+
+    monkeypatch.setattr(sm.urllib.request, "urlopen", fake_urlopen)
+    assert sm._fetch_with_backoff("https://example.invalid/x.jpg", sleep=sleeps.append) == b"payload"
+    assert len(calls) == 3
+    assert sleeps == [7.0, 4.0]  # Retry-After wins over the 2 s base delay; then the doubled base delay
+
+    calls.clear()
+    sleeps.clear()
+
+    def always_404(request, timeout):
+        calls.append(request.full_url)
+        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", email.message.Message(), None)
+
+    monkeypatch.setattr(sm.urllib.request, "urlopen", always_404)
+    with pytest.raises(urllib.error.HTTPError):
+        sm._fetch_with_backoff("https://example.invalid/y.jpg", sleep=sleeps.append)
+    assert len(calls) == 1 and sleeps == []  # a 404 is not retried
+
+    def always_429(request, timeout):
+        calls.append(request.full_url)
+        raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests", email.message.Message(), None)
+
+    calls.clear()
+    monkeypatch.setattr(sm.urllib.request, "urlopen", always_429)
+    with pytest.raises(urllib.error.HTTPError):
+        sm._fetch_with_backoff("https://example.invalid/z.jpg", sleep=sleeps.append)
+    assert len(calls) == sm.FETCH_MAX_ATTEMPTS and len(sleeps) == sm.FETCH_MAX_ATTEMPTS - 1
+
+
 def test_fetch_corpus_verifies_each_file_and_caches(tmp_path, monkeypatch, forbid_model_imports):
     files = _pin(monkeypatch)
     calls = []
