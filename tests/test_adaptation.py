@@ -596,3 +596,22 @@ def test_split_dataset_never_lets_a_group_straddle_splits(forbid_model_imports):
         for r in part:
             assert where.setdefault(r["group"], name) == name
     assert len(where) == 5 and check_split_disjoint(splits) and len(splits["test"]) == 6
+
+
+def test_byod_refuses_escaping_paths_and_duplicate_zip_basenames(tmp_path, forbid_model_imports):
+    records = _records(4)
+    folder = tmp_path / "byod"
+    folder.mkdir()
+    records[0]["image"].save(tmp_path / "outside.jpg")
+    (folder / "boxes.csv").write_text(
+        "id,file,group,x_min,y_min,x_max,y_max\nr0,../outside.jpg,g0,1,1,20,20\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="leaves the dataset directory"):
+        load_byod_dataset(folder)
+    duplicate = tmp_path / "dup.zip"
+    with zipfile.ZipFile(duplicate, "w") as zf:
+        zf.writestr("a/boxes.csv", "id\n")
+        zf.writestr("a/x.jpg", b"x")
+        zf.writestr("b/x.jpg", b"y")
+    with pytest.raises(ValueError, match="more than one member named"):
+        load_byod_dataset(duplicate)
