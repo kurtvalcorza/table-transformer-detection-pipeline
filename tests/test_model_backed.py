@@ -4,10 +4,12 @@ artifact round trip with head, box-head and decoder tensors. Skipped when the we
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import numpy as np
 import pytest
+import torch
 from PIL import Image
 
 from table_transformer_detection_pipeline import (
@@ -81,3 +83,60 @@ def test_new_heads_then_one_epoch_unfreeze_and_artifact_round_trip(pipe, tmp_pat
     reloaded = TableTransformerDetectionPipeline.from_artifact(artifact, device="cpu")
     assert reloaded.predict_boxes(RECORDS[:2]) == pipe.predict_boxes(RECORDS[:2])
     assert reloaded.adapter["best_epoch"] == result["best_epoch"] and reloaded.classes == result["classes"]
+
+
+def test_load_artifact_refuses_a_tensor_set_that_differs_from_the_recorded_policy(pipe, tmp_path):
+    """A manifest that claims the frozen policy but carries decoder tensors, records another layer count than
+    the tensors it lists, or whose payload carries an extra head tensor is refused before any tensor is
+    applied."""
+    import shutil
+
+    from safetensors.torch import load_file, save_file
+
+    result = pipe.adapt(RECORDS[:9], None, head_steps=40, trainable_layers=1, epochs=1, lr=1e-4)
+    assert result["policy"].startswith("unfrozen")
+    artifact = pipe.save_artifact(tmp_path / "ok")
+    manifest = json.loads((artifact / "manifest.json").read_text(encoding="utf-8"))
+    assert any(t.startswith("model.decoder.layers.5.") for t in manifest["tensors"])
+    claims_frozen = tmp_path / "claims_frozen"
+    shutil.copytree(artifact, claims_frozen)
+    adapter = {**manifest["adapter"], "policy": POLICY_FROZEN, "trainable_layers": 0}
+    (claims_frozen / "manifest.json").write_text(json.dumps({**manifest, "adapter": adapter}))
+    with pytest.raises(ValueError, match="does not match its recorded policy"):
+        TableTransformerDetectionPipeline.from_artifact(claims_frozen, device="cpu")
+    other_layers = tmp_path / "other_layers"
+    shutil.copytree(artifact, other_layers)
+    adapter = {
+        **manifest["adapter"],
+        "policy": "unfrozen last 2 decoder layers + new heads",
+        "trainable_layers": 2,
+    }
+    (other_layers / "manifest.json").write_text(json.dumps({**manifest, "adapter": adapter}))
+    with pytest.raises(ValueError, match="does not match its recorded policy"):
+        TableTransformerDetectionPipeline.from_artifact(other_layers, device="cpu")
+    extra = tmp_path / "extra"
+    shutil.copytree(artifact, extra)
+    tensors = load_file(str(extra / "adapter.safetensors"))
+    tensors["head.extra"] = torch.zeros(1)
+    save_file(tensors, str(extra / "adapter.safetensors"), metadata={"format": "pt"})
+    digest = hashlib.sha256((extra / "adapter.safetensors").read_bytes()).hexdigest()
+    size = (extra / "adapter.safetensors").stat().st_size
+    files = [{**manifest["files"][0], "bytes": size, "sha256": digest}]
+    (extra / "manifest.json").write_text(json.dumps({**manifest, "files": files}))
+    with pytest.raises(ValueError, match="tensor names differ"):
+        TableTransformerDetectionPipeline.from_artifact(extra, device="cpu")
+
+
+def test_adapt_is_transactional_when_the_progress_callback_raises(pipe):
+    """A failure inside the unfreeze leaves the base exactly as it was, frozen, with no heads or adapter."""
+    before = {k: v.clone() for k, v in pipe._model.state_dict().items()}
+
+    def boom(entry):
+        if entry["epoch"] == 1:
+            raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        pipe.adapt(RECORDS[:9], None, head_steps=40, trainable_layers=1, epochs=2, lr=1e-4, progress=boom)
+    after = pipe._model.state_dict()
+    assert all(torch.equal(before[k], after[k]) for k in before) and pipe.adapter is None
+    assert pipe._head is None and not any(p.requires_grad for p in pipe._model.parameters())

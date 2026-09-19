@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import itertools
 import json
 import math
 import random
@@ -51,12 +50,13 @@ MAX_EVAL_RECORDS = 2_000
 MIN_SCORED_RECORDS = 50  # below this a scored dataset is labelled a small sample
 CLASS_COST, BBOX_COST, GIOU_COST = 1.0, 5.0, 2.0  # DETR matching costs and loss weights (upstream defaults)
 NO_OBJECT_WEIGHT = 0.1  # DETR eos_coef
-EXACT_MATCH_MAX_TARGETS = 4  # up to this many reference boxes the Hungarian assignment is enumerated exactly
 ARTIFACT_FORMAT = "org.valcorza.table-transformer-detection.adapter.v1"
 ARTIFACT_FORMAT_VERSION = "1.0"
 ARTIFACT_WEIGHTS_NAME = "adapter.safetensors"
 ARTIFACT_MANIFEST_NAME = "manifest.json"
+CLASS_NAME = "nutrition-table"  # the single adapted class of the tutorial corpus and of every artifact
 POLICY_FROZEN = "frozen backbone, encoder and decoder + new heads"
+POLICY_UNFROZEN = "unfrozen last {k} decoder layers + new heads"
 
 
 def _sha256(path: Path) -> str:
@@ -577,8 +577,58 @@ class TableTransformerDetectionPipeline:
         enclosing = (rb_c - lt_c).clamp_min(0).prod(dim=-1)
         return iou - (enclosing - union) / enclosing.clamp_min(1e-9)
 
+    @staticmethod
+    def hungarian(cost: Sequence[Sequence[float]]) -> list[tuple[int, int]]:
+        """Exact minimum-cost assignment of every row of a rectangular cost matrix (rows <= columns) to a
+        distinct column: the O(n^2 m) shortest-augmenting-path algorithm with dual potentials (Jonker–
+        Volgenant style), in plain Python. Returns (row, column) pairs."""
+        n = len(cost)
+        m = len(cost[0]) if n else 0
+        if n == 0:
+            return []
+        if n > m:
+            raise ValueError(f"hungarian needs rows <= columns, got {n} x {m}")
+        inf = math.inf
+        u = [0.0] * (n + 1)
+        v = [0.0] * (m + 1)
+        way = [0] * (m + 1)  # for each column, the column it was reached from on the augmenting path
+        assigned = [0] * (m + 1)  # column -> row (1-based), 0 = free
+        for i in range(1, n + 1):
+            assigned[0] = i
+            j0 = 0
+            minv = [inf] * (m + 1)
+            used = [False] * (m + 1)
+            while True:
+                used[j0] = True
+                i0 = assigned[j0]
+                delta, j1 = inf, 0
+                row = cost[i0 - 1]
+                for j in range(1, m + 1):
+                    if used[j]:
+                        continue
+                    cur = row[j - 1] - u[i0] - v[j]
+                    if cur < minv[j]:
+                        minv[j] = cur
+                        way[j] = j0
+                    if minv[j] < delta:
+                        delta, j1 = minv[j], j
+                for j in range(m + 1):
+                    if used[j]:
+                        u[assigned[j]] += delta
+                        v[j] -= delta
+                    else:
+                        minv[j] -= delta
+                j0 = j1
+                if assigned[j0] == 0:
+                    break
+            while j0:
+                j1 = way[j0]
+                assigned[j0] = assigned[j1]
+                j0 = j1
+        return sorted((assigned[j] - 1, j - 1) for j in range(1, m + 1) if assigned[j])
+
     def _match(self, probabilities: Any, boxes: Any, targets: Any) -> list[tuple[int, int]]:
-        """Minimum-cost one-to-one assignment of reference boxes to queries (exact for small sets)."""
+        """Minimum-cost one-to-one assignment of reference boxes to queries (exact Hungarian, any count)."""
         import torch
 
         with torch.no_grad():
@@ -586,32 +636,15 @@ class TableTransformerDetectionPipeline:
             cost = (
                 cost + BBOX_COST * torch.cdist(boxes, targets, p=1) - GIOU_COST * self._giou(boxes, targets)
             )
-            cost = cost.cpu().numpy()
-        n_targets = targets.shape[0]
-        if n_targets <= EXACT_MATCH_MAX_TARGETS:
-            best, best_perm = math.inf, None
-            for perm in itertools.permutations(range(NUM_QUERIES), n_targets):
-                total = sum(cost[q, g] for g, q in enumerate(perm))
-                if total < best:
-                    best, best_perm = total, perm
-            return [(q, g) for g, q in enumerate(best_perm)]
-        pairs = []
-        used: set[int] = set()
-        order = sorted((cost[q, g], q, g) for q in range(NUM_QUERIES) for g in range(n_targets))
-        assigned: set[int] = set()
-        for _c, q, g in order:
-            if q in used or g in assigned:
-                continue
-            pairs.append((q, g))
-            used.add(q)
-            assigned.add(g)
-        return pairs
+            matrix = cost.t().cpu().tolist()  # targets x queries
+        return [(q, g) for g, q in self.hungarian(matrix)]
 
     def _loss(self, logits: Any, boxes: Any, targets: Any) -> Any:
         """DETR set loss for one image: weighted cross-entropy over queries (no-object weight 0.1), L1 and
-        GIoU on the matched boxes, normalised by the number of reference boxes."""
+        GIoU on the matched boxes, normalised by the number of reference boxes. Targets may be on the CPU."""
         import torch
 
+        targets = targets.to(logits.device)  # CPU-built targets meet CUDA logits and boxes here
         probabilities = torch.softmax(logits, dim=-1)
         pairs = self._match(probabilities.detach(), boxes.detach(), targets)
         n_classes = logits.shape[-1] - 1
@@ -623,7 +656,7 @@ class TableTransformerDetectionPipeline:
         weights[n_classes] = NO_OBJECT_WEIGHT
         loss_ce = torch.nn.functional.cross_entropy(logits, target_classes, weight=weights)
         matched_boxes = boxes[query_index]
-        matched_targets = targets.to(logits.device)[target_index]
+        matched_targets = targets[target_index]
         loss_bbox = torch.nn.functional.l1_loss(matched_boxes, matched_targets, reduction="sum") / max(
             len(pairs), 1
         )
@@ -724,7 +757,7 @@ class TableTransformerDetectionPipeline:
                 return None
             return {
                 "n": metrics["n_images"],
-                "loss": round(metrics["loss"], 6),
+                "loss": metrics["loss"],  # full precision: the selection compares this value
                 "ap50": round(metrics["ap50"], 6),
                 "map": round(metrics["map"], 6),
                 "recall_at_threshold": round(metrics["recall_at_threshold"], 6),
@@ -754,7 +787,7 @@ class TableTransformerDetectionPipeline:
         }
         policy = POLICY_FROZEN
         if names and epochs > 0:
-            policy_b = f"unfrozen last {trainable_layers} decoder layers + new heads"
+            policy_b = POLICY_UNFROZEN.format(k=trainable_layers)
             for n in names:
                 params[n].requires_grad_(True)
             optimiser = torch.optim.AdamW(
@@ -762,43 +795,56 @@ class TableTransformerDetectionPipeline:
                 lr=float(lr),
                 weight_decay=0.01,
             )
-            for epoch in range(1, epochs + 1):
-                model.train()
-                head.train()
-                bbox_head.train()
-                order = list(range(len(train_records)))
-                rng.shuffle(order)
-                losses = []
-                for index in order:
-                    record = train_records[index]
-                    hidden = self._decoder_features(record["image"], grad=True)
-                    loss = self._loss(head(hidden), bbox_head(hidden).sigmoid(), targets[index])
-                    optimiser.zero_grad(set_to_none=True)
-                    loss.backward()
-                    torch.nn.utils.clip_grad_norm_(
-                        [*head.parameters(), *bbox_head.parameters(), *(params[n] for n in names)], 0.1
-                    )
-                    optimiser.step()
-                    losses.append(float(loss.detach()))
-                self.adapter = {"policy": policy_b}
-                val_metrics = score()
-                entry = {
-                    "epoch": epoch,
-                    "stage": policy_b,
-                    "train_loss": float(sum(losses) / len(losses)),
-                    "val": val_metrics,
-                }
-                history.append(entry)
-                if progress is not None:
-                    progress(entry)
-                current = val_metrics["loss"] if val_metrics else -epoch  # no val: the last epoch wins
-                if current < best_score:
-                    best_epoch, best_score, policy = epoch, current, policy_b
-                    best_state = {
-                        "head": {k: v.detach().clone() for k, v in head.state_dict().items()},
-                        "bbox_head": {k: v.detach().clone() for k, v in bbox_head.state_dict().items()},
-                        "layers": {n: params[n].detach().clone() for n in names},
+            initial_layers = {n: v.clone() for n, v in best_state["layers"].items()}
+            try:
+                for epoch in range(1, epochs + 1):
+                    model.train()
+                    head.train()
+                    bbox_head.train()
+                    order = list(range(len(train_records)))
+                    rng.shuffle(order)
+                    losses = []
+                    for index in order:
+                        record = train_records[index]
+                        hidden = self._decoder_features(record["image"], grad=True)
+                        loss = self._loss(head(hidden), bbox_head(hidden).sigmoid(), targets[index])
+                        optimiser.zero_grad(set_to_none=True)
+                        loss.backward()
+                        torch.nn.utils.clip_grad_norm_(
+                            [*head.parameters(), *bbox_head.parameters(), *(params[n] for n in names)], 0.1
+                        )
+                        optimiser.step()
+                        losses.append(float(loss.detach()))
+                    self.adapter = {"policy": policy_b}
+                    val_metrics = score()
+                    entry = {
+                        "epoch": epoch,
+                        "stage": policy_b,
+                        "train_loss": float(sum(losses) / len(losses)),
+                        "val": val_metrics,
                     }
+                    history.append(entry)
+                    if progress is not None:
+                        progress(entry)
+                    current = val_metrics["loss"] if val_metrics else -epoch  # no val: the last epoch wins
+                    if current < best_score:
+                        best_epoch, best_score, policy = epoch, current, policy_b
+                        best_state = {
+                            "head": {k: v.detach().clone() for k, v in head.state_dict().items()},
+                            "bbox_head": {k: v.detach().clone() for k, v in bbox_head.state_dict().items()},
+                            "layers": {n: params[n].detach().clone() for n in names},
+                        }
+            except BaseException:
+                # Transactional: a failure in training, validation or the progress callback leaves the base
+                # exactly as it was, frozen, with no heads or adapter attached.
+                with torch.no_grad():
+                    for n, value in initial_layers.items():
+                        params[n].copy_(value)
+                for p in model.parameters():
+                    p.requires_grad_(False)
+                model.eval()
+                self._head, self._bbox_head, self.classes, self.adapter = None, None, [], None
+                raise
             with torch.no_grad():
                 head.load_state_dict(best_state["head"])
                 bbox_head.load_state_dict(best_state["bbox_head"])
@@ -883,13 +929,20 @@ class TableTransformerDetectionPipeline:
         )
         return out
 
-    def load_artifact(self, artifact_dir: str | Path) -> dict[str, Any]:
-        """Verify an adapter's manifest and digest **before** deserialising, rebuild the heads and overlay any
-        decoder-layer tensors onto the base."""
-        root = Path(artifact_dir)
-        manifest = json.loads((root / ARTIFACT_MANIFEST_NAME).read_text(encoding="utf-8"))
+    def _check_artifact_manifest(self, root: Path, manifest: Mapping[str, Any]) -> tuple[Path, int]:
+        """Refuse an artifact whose manifest is not exactly the one this pipeline writes: the supported format
+        and version, the pinned base (id, revision, weight file, digest), exactly one file entry named
+        `adapter.safetensors` that resolves inside the artifact directory, `classes == [CLASS_NAME]`, a
+        canonical policy and an integer `trainable_layers` in range. Nothing is deserialised here. The digest
+        check that follows detects corruption or drift of the weights relative to the adjacent manifest; it
+        is not authenticity against an actor who can replace both files."""
         if manifest.get("format") != ARTIFACT_FORMAT:
             raise ValueError(f"artifact format {manifest.get('format')!r} != {ARTIFACT_FORMAT!r}")
+        if manifest.get("format_version") != ARTIFACT_FORMAT_VERSION:
+            raise ValueError(
+                f"artifact format_version {manifest.get('format_version')!r} is not the supported "
+                f"{ARTIFACT_FORMAT_VERSION!r}"
+            )
         base = manifest.get("base_model", {})
         if (base.get("id"), base.get("revision"), base.get("weight_sha256")) != (
             MODEL_ID,
@@ -897,21 +950,64 @@ class TableTransformerDetectionPipeline:
             WEIGHT_SHA256,
         ):
             raise ValueError("artifact was adapted from a different base model, revision or weight file")
+        if base.get("weight_file", WEIGHTS_FILE) != WEIGHTS_FILE:
+            raise ValueError("artifact was adapted from a different base weight file")
+        files = manifest.get("files")
+        if not isinstance(files, list) or len(files) != 1:
+            raise ValueError("artifact manifest must list exactly one file")
+        entry = files[0]
+        if not isinstance(entry, Mapping) or entry.get("path") != ARTIFACT_WEIGHTS_NAME:
+            raise ValueError(f"artifact manifest must name exactly {ARTIFACT_WEIGHTS_NAME!r}")
+        weights_path = (root / entry["path"]).resolve()
+        if weights_path.parent != root.resolve():
+            raise ValueError("artifact weight path must resolve inside the artifact directory")
+        adapter = manifest.get("adapter")
+        if not isinstance(adapter, Mapping):
+            raise ValueError("artifact manifest has no adapter block")
+        if list(adapter.get("classes") or []) != [CLASS_NAME]:
+            raise ValueError(f"artifact classes {adapter.get('classes')!r} != [{CLASS_NAME!r}]")
+        layers = adapter.get("trainable_layers")
+        if isinstance(layers, bool) or not isinstance(layers, int) or not 0 <= layers <= DECODER_LAYERS:
+            raise ValueError(
+                f"artifact manifest does not record an integer trainable_layers in 0..{DECODER_LAYERS}"
+            )
+        policy = adapter.get("policy")
+        if policy == POLICY_FROZEN:
+            layers = 0
+        elif policy != POLICY_UNFROZEN.format(k=layers) or layers == 0:
+            raise ValueError(
+                f"artifact policy {policy!r} is not a canonical policy for trainable_layers={layers}"
+            )
+        if not isinstance(manifest.get("tensors"), list):
+            raise ValueError("artifact manifest must list its tensors")
+        return weights_path, layers
+
+    def load_artifact(self, artifact_dir: str | Path) -> dict[str, Any]:
+        """Verify an adapter's manifest, digest and exact tensor set **before** deserialising, rebuild the
+        heads and overlay any decoder-layer tensors (none under the frozen policy)."""
+        root = Path(artifact_dir)
+        manifest = json.loads((root / ARTIFACT_MANIFEST_NAME).read_text(encoding="utf-8"))
+        weights_path, layers = self._check_artifact_manifest(root, manifest)
         entry = manifest["files"][0]
-        weights_path = root / entry["path"]
         if not weights_path.is_file():
             raise FileNotFoundError(f"artifact weights missing: {weights_path}")
         if _sha256(weights_path) != entry["sha256"] or weights_path.stat().st_size != entry["bytes"]:
             raise ValueError(f"{entry['path']}: digest or size mismatch; refusing to load")
-        classes = list(manifest.get("adapter", {}).get("classes") or [])
-        if len(classes) < 1:
-            raise ValueError("artifact manifest does not name the adapted class")
+        classes = [CLASS_NAME]
         model, _ = self._require_model()
         import torch
         from safetensors.torch import load_file
 
+        # The exact tensor set the recorded policy implies: the two heads, plus the last `layers` decoder
+        # layers only under the unfrozen policy.
+        head_names = ["head.bias", "head.weight"] + [
+            f"bbox_head.{k}" for k in model.bbox_predictor.state_dict()
+        ]
+        expected = sorted([*head_names, *self._trainable_names(layers)])
+        if sorted(manifest["tensors"]) != expected:
+            raise ValueError("artifact tensor list does not match its recorded policy and trainable_layers")
         tensors = load_file(str(weights_path))
-        if sorted(tensors) != manifest["tensors"]:
+        if sorted(tensors) != expected:
             raise ValueError("artifact tensor names differ from its manifest")
         if (
             tuple(tensors.get("head.weight", torch.empty(0)).shape) != (len(classes) + 1, D_MODEL)

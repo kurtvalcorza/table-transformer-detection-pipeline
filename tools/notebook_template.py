@@ -39,9 +39,10 @@ TEMPLATE = {
     ),
     "byod": (
         "After the tutorial workflow completes, set `USE_BYOD = True` in Section 4 and re-run from that cell to supply your own "
-        "box-labelled images as a `.zip` holding `boxes.csv` (columns `id`, `file`, `x_min`, `y_min`, `x_max`, `y_max`, optional "
-        "`group`; one row per box, pixel coordinates) beside the image files — images are decoded from the archive, never "
-        "extracted to disk. They pass through the same validation, seeded group-disjoint split, prior, zero-shot scoring, "
+        "box-labelled images as a `.zip` holding `boxes.csv` (columns `id`, `file`, `group`, `x_min`, `y_min`, `x_max`, `y_max`; "
+        "one row per box, pixel coordinates; `group` — the product, session or device — must be non-empty on every row, and "
+        "rows of one `id` must agree on `file` and `group`, or the loader refuses the set) beside the image files — images are "
+        "decoded from the archive, never extracted to disk. They pass through the same validation, seeded group-disjoint split, prior, zero-shot scoring, "
         "frozen-policy heads, unfrozen-policy training and selection, held-out evaluation, detection rendering, artifact "
         "export and reload-parity cells as the Open Food Facts sample. The expected schema and the ceilings are stated in the "
         "Prerequisites and in Section 4, and uploaded files stay inside this runtime. BYOD is optional and never part of the "
@@ -123,7 +124,7 @@ TEMPLATE = {
     "prerequisites": [
         "- **Runtime:** a fresh supported runtime (Google Colab or Jupyter, Python 3.12). The default path runs on CPU and uses CUDA automatically when available; float32 on both. The build record measured about 0.3 s per photograph to run the decoder on CPU (3 s for the 25-photograph zero-shot pass), about 20 s for the new heads including feature extraction, and about 30 s per unfreeze epoch over 72 photographs plus a 24-photograph validation pass. The pinned `torch==2.14.0` install and the 115 MB checkpoint are the large downloads of the run, then the 129 MB of photographs.",
         "- **Knowledge:** basic Python and PIL; what a bounding box in xyxy pixel coordinates is; what intersection-over-union and average precision measure and why AP does not depend on a score threshold; what a Hungarian (one-to-one) matching between predictions and references is; what validation-based selection between two policies means.",
-        "- **Data contract:** records are `{{id, image, boxes}}` — a PIL image (or a path to one) with sides 16..4,096 px, a list of 1..15 `[x_min, y_min, x_max, y_max]` pixel boxes inside the image with sides of at least 4 px, ids matching `[A-Za-z0-9_.:-]{{1,64}}` and unique; a training set needs 8..2,000 records; images are de-duplicated by decoded-pixel digest and split by `group` / `barcode` so one product never straddles splits. BYOD accepts a `.zip` (or a directory) holding `boxes.csv` and the image files.",
+        "- **Data contract:** records are `{{id, image, boxes}}` — a PIL image (or a path to one) with sides 16..4,096 px, a list of 1..15 `[x_min, y_min, x_max, y_max]` pixel boxes inside the image with sides of at least 4 px, ids matching `[A-Za-z0-9_.:-]{{1,64}}` and unique; a training set needs 8..2,000 records; images are de-duplicated by decoded-pixel digest and split by `group` / `barcode` so one product never straddles splits. BYOD accepts a `.zip` (or a directory) holding `boxes.csv` and the image files, and requires a non-empty `group` on every row — the notebook's automatic split is group-disjoint only because the loader refuses ungrouped rows (`load_byod_dataset(..., require_group=False)` is the explicit opt-out, without that guarantee).",
         "- **Validation is structural, not semantic:** nothing checks that a box is around a table — a mislabelled set is trained on without complaint; all boxes are one class, and the four Open Food Facts nutrition-table categories are merged into it (kept under `categories` for provenance).",
         "- **Privacy:** Do not upload confidential or restricted data to a hosted runtime unless you are authorized to process it there — product photographs can show hands, homes and receipts. The default path uploads nothing.",
         "- **External access (data):** besides the Hub, the default path fetches 121 pinned objects (`<barcode path>/<image id>.jpg`, 129,318,620 bytes in total, one SHA-256 each in the carried `SAMPLE_RECORDS` table) from `static.openfoodfacts.org` over HTTPS, each refused on any byte-size or SHA-256 mismatch before it is decoded; the images are CC BY-SA 3.0 (Open Food Facts contributors) and the boxes come from the Open Food Facts nutrition-table detection dataset (ODbL), credited in the References.",
@@ -298,7 +299,7 @@ TEMPLATE = {
                 "and the earlier decoder layers stay frozen — and trains them with both heads end to end, one photograph "
                 "per step, for `EPOCHS` epochs (AdamW at `LEARNING_RATE`, weight decay 0.01, gradient clipping 0.1, seeded "
                 "order, no augmentation) under the same DETR set loss: Hungarian matching of the 15 queries to the "
-                "reference boxes (exact enumeration for up to four boxes), cross-entropy with a 0.1 no-object weight, L1 "
+                "reference boxes (the exact rectangular assignment, the O(n²m) shortest-augmenting-path algorithm, for every supported box count), cross-entropy with a 0.1 no-object weight, L1 "
                 "and GIoU box terms — all in the carried module, no external matcher. Every epoch is scored on validation, "
                 "and the epoch with the **lowest validation loss** is kept — epoch 0, the heads alone, competes on equal "
                 "terms, so the selected policy can be either. AP@0.5 and mAP are printed beside the loss at every "

@@ -33,7 +33,7 @@ from typing import Any
 
 from PIL import Image
 
-from .pipeline import MAX_DETECTIONS, MAX_IMAGE_SIDE, MIN_IMAGE_SIDE, MODEL_ID
+from .pipeline import CLASS_NAME, MAX_DETECTIONS, MAX_IMAGE_SIDE, MIN_IMAGE_SIDE, MODEL_ID
 
 CORPUS_NAME = "Open Food Facts nutrition-table photographs"
 CORPUS_RELEASE = (
@@ -43,7 +43,6 @@ CORPUS_RELEASE = (
 CORPUS_BASE_URL = "https://static.openfoodfacts.org/images/products/"
 CORPUS_LICENSE = "CC BY-SA 3.0 (Open Food Facts images; boxes from the Open Food Facts dataset, ODbL)"
 CORPUS_BYTES = 129_318_620
-CLASS_NAME = "nutrition-table"
 CORPUS_LONGEST_SIDE = 1280  # served originals (up to 5,312 px) are downscaled to this at read time
 SKIPPED_EXIF = ("0024138012322_3", "0041449003153_2")  # served originals with an EXIF orientation tag
 
@@ -1684,10 +1683,13 @@ def split_dataset(
     return splits
 
 
-def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:
+def load_byod_dataset(path: str | Path, *, require_group: bool = True) -> list[dict[str, Any]]:
     """Read `{id, image, boxes}` records from a directory or a zip holding `boxes.csv` (columns `id`, `file`,
-    `x_min`, `y_min`, `x_max`, `y_max`, optional `group`; one row per box, pixel coordinates) beside the image
-    files; images are decoded, never extracted to disk."""
+    `group`, `x_min`, `y_min`, `x_max`, `y_max`; one row per box, pixel coordinates) beside the image files;
+    images are decoded, never extracted to disk. `group` (the product, session or device the photograph
+    belongs to) must be non-empty on every row unless `require_group=False`, in which case the split falls
+    back to one unit per photograph and the group-disjoint guarantee is gone. Rows of one `id` must agree on
+    `file` and `group`."""
     source = Path(path)
     if source.is_dir():
         table = (source / "boxes.csv").read_text(encoding="utf-8")
@@ -1706,15 +1708,29 @@ def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:
     if missing:
         raise ValueError(f"boxes.csv is missing columns {sorted(missing)}")
     grouped: dict[str, dict[str, Any]] = {}
+    origin: dict[str, tuple[str, str]] = {}
     for row in rows:
+        group = (row.get("group") or "").strip()
+        if require_group and not group:
+            raise ValueError(
+                f"boxes.csv row for id {row['id']!r} has no `group`; every row needs the product, session "
+                "or device the photograph belongs to so the split stays group-disjoint (pass "
+                "require_group=False to split by photograph instead, without that guarantee)"
+            )
         item = grouped.get(row["id"])
         if item is None:
             image = loader(row["file"])
             image.load()
             item = {"id": row["id"], "image": image.convert("RGB"), "boxes": []}
-            if row.get("group"):
-                item["group"] = row["group"]
+            if group:
+                item["group"] = group
             grouped[row["id"]] = item
+            origin[row["id"]] = (row["file"], group)
+        elif origin[row["id"]] != (row["file"], group):
+            raise ValueError(
+                f"boxes.csv rows for id {row['id']!r} disagree on file or group "
+                f"({origin[row['id']]} vs {(row['file'], group)})"
+            )
         item["boxes"].append(
             [float(row["x_min"]), float(row["y_min"]), float(row["x_max"]), float(row["y_max"])]
         )

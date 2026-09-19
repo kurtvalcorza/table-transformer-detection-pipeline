@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import itertools
 import json
 import zipfile
 
@@ -407,9 +408,8 @@ def test_matcher_and_set_loss_prefer_the_right_query():
     giou = pipe._giou(targets, targets)
     assert torch.allclose(torch.diagonal(giou), torch.ones(2), atol=1e-6) and giou[0, 1] < 0.5
     many = torch.rand(6, 4) * 0.4 + 0.3
-    assert (
-        len(pipe._match(torch.softmax(torch.zeros(NUM_QUERIES, 2), dim=-1), boxes, many)) == 6
-    )  # greedy path
+    pairs = pipe._match(torch.softmax(torch.zeros(NUM_QUERIES, 2), dim=-1), boxes, many)
+    assert len(pairs) == 6 and len({q for q, _ in pairs}) == 6  # exact for every count, one query per box
 
 
 def test_adapt_and_artifacts_need_a_loaded_model(tmp_path, forbid_model_imports):
@@ -437,9 +437,10 @@ def test_load_artifact_rejects_bad_manifests_before_touching_weights(tmp_path, f
     manifest = {
         "format": ARTIFACT_FORMAT,
         "base_model": {"id": MODEL_ID, "revision": MODEL_REVISION, "weight_sha256": WEIGHT_SHA256},
+        "format_version": pl.ARTIFACT_FORMAT_VERSION,
         "files": [{"path": pl.ARTIFACT_WEIGHTS_NAME, "bytes": 1, "sha256": "0" * 64}],
         "tensors": ["bbox_head.layers.0.weight", "head.bias", "head.weight"],
-        "adapter": {"classes": [CLASS_NAME], "policy": pl.POLICY_FROZEN},
+        "adapter": {"classes": [CLASS_NAME], "policy": pl.POLICY_FROZEN, "trainable_layers": 2},
     }
     (tmp_path / pl.ARTIFACT_MANIFEST_NAME).write_text(json.dumps({**manifest, "format": "other"}))
     with pytest.raises(ValueError, match="artifact format"):
@@ -454,3 +455,144 @@ def test_load_artifact_rejects_bad_manifests_before_touching_weights(tmp_path, f
     (tmp_path / pl.ARTIFACT_WEIGHTS_NAME).write_bytes(b"x")
     with pytest.raises(ValueError, match="digest or size mismatch"):
         pipe.load_artifact(tmp_path)
+
+
+def test_hungarian_is_exact_and_beats_greedy_above_four_targets():
+    """The exact rectangular assignment on a five-target case where the greedy global-edge rule is suboptimal."""
+    cost = [
+        [1.0, 2.0, 9.0, 9.0, 9.0, 9.0],
+        [2.0, 9.0, 9.0, 9.0, 9.0, 9.0],
+        [9.0, 9.0, 1.0, 2.0, 9.0, 9.0],
+        [9.0, 9.0, 2.0, 9.0, 9.0, 9.0],
+        [9.0, 9.0, 9.0, 9.0, 1.0, 9.0],
+    ]
+    pairs = TableTransformerDetectionPipeline.hungarian(cost)
+    optimum = sum(cost[i][j] for i, j in pairs)
+    # greedy: take the globally cheapest edge, then the next cheapest not conflicting, ...
+    order = sorted((cost[i][j], i, j) for i in range(5) for j in range(6))
+    used_i, used_j, greedy = set(), set(), 0.0
+    for c, i, j in order:
+        if i in used_i or j in used_j:
+            continue
+        used_i.add(i)
+        used_j.add(j)
+        greedy += c
+    assert optimum == 9.0 and greedy == 21.0  # 2+2+2+2+1 against greedy 1+1+1+9+9
+    brute = min(sum(cost[i][p[i]] for i in range(5)) for p in itertools.permutations(range(6), 5))
+    assert optimum == brute
+    with pytest.raises(ValueError, match="rows <= columns"):
+        TableTransformerDetectionPipeline.hungarian([[1.0], [2.0]])
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not visible")
+def test_set_loss_accepts_cpu_targets_with_cuda_logits():
+    pipe = _pipeline_without_model()
+    logits = torch.zeros(NUM_QUERIES, 2, device="cuda")
+    boxes = torch.full((NUM_QUERIES, 4), 0.5, device="cuda")
+    targets = torch.tensor([[0.5, 0.5, 0.2, 0.2]])  # built on the CPU, as _targets() builds them
+    loss = pipe._loss(logits, boxes, targets)
+    assert loss.device.type == "cuda" and torch.isfinite(loss)
+
+
+def test_load_artifact_refuses_unsupported_versions_extra_files_traversal_classes_and_policies(
+    tmp_path, forbid_model_imports
+):
+    pipe = _pipeline_without_model()
+    good = {
+        "format": ARTIFACT_FORMAT,
+        "format_version": pl.ARTIFACT_FORMAT_VERSION,
+        "base_model": {"id": MODEL_ID, "revision": MODEL_REVISION, "weight_sha256": WEIGHT_SHA256},
+        "files": [{"path": pl.ARTIFACT_WEIGHTS_NAME, "bytes": 1, "sha256": "0" * 64}],
+        "tensors": ["head.bias", "head.weight"],
+        "adapter": {"classes": [CLASS_NAME], "policy": pl.POLICY_FROZEN, "trainable_layers": 0},
+    }
+
+    def write(manifest):
+        (tmp_path / pl.ARTIFACT_MANIFEST_NAME).write_text(json.dumps(manifest))
+
+    write({**good, "format_version": "0.9"})
+    with pytest.raises(ValueError, match="format_version"):
+        pipe.load_artifact(tmp_path)
+    write({**good, "files": good["files"] * 2})
+    with pytest.raises(ValueError, match="exactly one file"):
+        pipe.load_artifact(tmp_path)
+    write({**good, "files": [{**good["files"][0], "path": "../" + pl.ARTIFACT_WEIGHTS_NAME}]})
+    with pytest.raises(ValueError, match="must name exactly|inside the artifact directory"):
+        pipe.load_artifact(tmp_path)
+    write({**good, "base_model": {**good["base_model"], "weight_file": "pytorch_model.bin"}})
+    with pytest.raises(ValueError, match="different base weight file"):
+        pipe.load_artifact(tmp_path)
+    write({**good, "adapter": {**good["adapter"], "classes": [CLASS_NAME, "other"]}})
+    with pytest.raises(ValueError, match="artifact classes"):
+        pipe.load_artifact(tmp_path)
+    write({**good, "adapter": {**good["adapter"], "policy": "something else"}})
+    with pytest.raises(ValueError, match="not a canonical policy"):
+        pipe.load_artifact(tmp_path)
+    write(
+        {
+            **good,
+            "adapter": {**good["adapter"], "policy": pl.POLICY_UNFROZEN.format(k=3), "trainable_layers": 2},
+        }
+    )
+    with pytest.raises(ValueError, match="not a canonical policy"):
+        pipe.load_artifact(tmp_path)
+    write({**good, "adapter": {**good["adapter"], "trainable_layers": 99}})
+    with pytest.raises(ValueError, match="trainable_layers"):
+        pipe.load_artifact(tmp_path)
+    write(good)  # every manifest check passes; the weights file is still missing, and no model was imported
+    with pytest.raises(FileNotFoundError, match="artifact weights missing"):
+        pipe.load_artifact(tmp_path)
+
+
+def test_byod_requires_a_group_and_consistent_rows(tmp_path, forbid_model_imports):
+    records = _records(4)
+    folder = tmp_path / "ungrouped"
+    folder.mkdir()
+    for record in records:
+        record["image"].save(folder / f"{record['id']}.jpg")
+
+    def write_rows(rows):
+        with open(folder / "boxes.csv", "w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle, fieldnames=["id", "file", "group", "x_min", "y_min", "x_max", "y_max"]
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+    base = [
+        {
+            "id": r["id"],
+            "file": f"{r['id']}.jpg",
+            "group": "",
+            "x_min": b[0],
+            "y_min": b[1],
+            "x_max": b[2],
+            "y_max": b[3],
+        }
+        for r in records
+        for b in r["boxes"]
+    ]
+    write_rows(base)
+    with pytest.raises(ValueError, match="has no `group`"):
+        load_byod_dataset(folder)
+    ungrouped = load_byod_dataset(folder, require_group=False)  # the explicit opt-out
+    assert len(ungrouped) == 4 and all("group" not in r for r in ungrouped)
+    grouped = [{**row, "group": "g" + row["id"][-1]} for row in base]
+    write_rows(grouped)
+    assert {r["group"] for r in load_byod_dataset(folder)} == {"g" + r["id"][-1] for r in records}
+    write_rows(grouped + [{**grouped[0], "group": "other"}])
+    with pytest.raises(ValueError, match="disagree on file or group"):
+        load_byod_dataset(folder)
+    write_rows(grouped + [{**grouped[0], "file": grouped[-1]["file"]}])
+    with pytest.raises(ValueError, match="disagree on file or group"):
+        load_byod_dataset(folder)
+
+
+def test_split_dataset_never_lets_a_group_straddle_splits(forbid_model_imports):
+    records = [{**r, "group": f"product{i % 5}"} for i, r in enumerate(_records(30))]
+    splits = split_dataset(records, val_fraction=0.2, test_fraction=0.2, seed=1)
+    where = {}
+    for name, part in splits.items():
+        for r in part:
+            assert where.setdefault(r["group"], name) == name
+    assert len(where) == 5 and check_split_disjoint(splits) and len(splits["test"]) == 6
