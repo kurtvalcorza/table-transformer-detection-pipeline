@@ -40,7 +40,7 @@ The uses below are the ones the package was built to support; everything else is
 
 ###### Primary Intended Uses
 
-The task is table detection on document page images: input one page (`PIL.Image.Image`, any mode, converted to RGB) and a threshold; output a list of at most 15 detections, each an xyxy pixel box, a `label` of `table` or `table rotated`, and the model's softmax `score`, sorted by score. Envisioned applications are the first stage of table extraction from born-digital PDFs and reports — locating the table regions that a structure-recognition model (the sibling `table-transformer-structure-pipeline`) then decomposes into rows, columns and cells — page triage that flags which pages of a document contain tables, and cropping table regions for OCR or downstream analytics. Within DIMER the pipeline is an inference component and a zero-configuration baseline for document layout work, not a certified extractor for any specific document family.
+The task is table detection on document page images: input one page (`PIL.Image.Image`, any mode, converted to RGB) and a threshold; output a list of at most 15 detections, each an xyxy pixel box, a `label` of `table` or `table rotated`, and the model's softmax `score`, sorted by score. Envisioned applications are the first stage of table extraction from born-digital PDFs and reports — locating the table regions that a structure-recognition model (the sibling `table-transformer-structure-pipeline`) then decomposes into rows, columns and cells — page triage that flags which pages of a document contain tables, and cropping table regions for OCR or downstream analytics. The pipeline is an inference component and a zero-configuration baseline for document layout work, not a certified extractor for any specific document family.
 
 ###### Primary Intended Users
 
@@ -117,7 +117,7 @@ This pipeline is not intended for decisions in health, safety, criminal justice,
 
 ###### Use cases
 
-Prohibited even where the model would work: locating tables in order to extract personal data for surveillance, profiling, social scoring, or unlawful discrimination in employment, housing, credit, insurance, education, or healthcare access; extracting data from documents the operator has no right to process or from paywalled or licence-restricted publications in breach of their terms; deceptive uses that present detections as verified document facts or as evidence; and any use that violates the upstream MIT licence terms, the DIMER deployment terms, or the consent and data-protection obligations attached to the pages processed. Autonomous high-consequence actions triggered by an unreviewed detection are prohibited by the intended-use contract above.
+Prohibited even where the model would work: locating tables in order to extract personal data for surveillance, profiling, social scoring, or unlawful discrimination in employment, housing, credit, insurance, education, or healthcare access; extracting data from documents the operator has no right to process or from paywalled or licence-restricted publications in breach of their terms; deceptive uses that present detections as verified document facts or as evidence; and any use that violates the upstream MIT licence terms, the terms of the deployment that runs the pipeline, or the consent and data-protection obligations attached to the pages processed. Autonomous high-consequence actions triggered by an unreviewed detection are prohibited by the intended-use contract above.
 
 ## Immutable provenance
 
