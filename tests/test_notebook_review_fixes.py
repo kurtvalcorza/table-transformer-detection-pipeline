@@ -1,7 +1,7 @@
 """Regression tests for the 2026-10-05 notebook review findings (TTD-M1..M5, TTD-m1, TTD-m2).
 
 Every test needs only CI's dependencies and no model: the notebook's own cell sources are executed with stand-ins
-where a model would be needed. Stand-in evidence is plumbing evidence, not model evidence.
+where a model would be needed, and restore_base() is exercised on a small torch module, not the checkpoint. Stand-in evidence is plumbing evidence, not model evidence.
 """
 # ruff: noqa: E501
 
@@ -127,6 +127,28 @@ def test_ttd_m2_adapt_and_load_artifact_restore_the_base_first():
     assert load.index("self.restore_base()") < load.index("params[key].copy_(")
     restore = text[text.index("    def restore_base(") : text.index("    @classmethod")]
     assert "params[name].copy_(self._base_layers[name])" in restore and "self._head, self._bbox_head, self.adapter = None, None, None" in restore
+
+
+def test_ttd_m2_restore_base_undoes_every_earlier_change_on_torch_tensors():
+    """restore_base() on real torch parameters (a two-layer stand-in module, not the checkpoint)."""
+    torch = pytest.importorskip("torch")
+    from table_transformer_detection_pipeline import TableTransformerDetectionPipeline
+
+    module = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 2))
+    base = {name: value.detach().clone() for name, value in module.named_parameters()}
+    pipe = TableTransformerDetectionPipeline(_runner=lambda image, threshold: [], device="cpu", _model=module, _processor=object())
+    assert pipe.restore_base() == []
+    pipe._remember_base(["1.weight", "1.bias"])
+    with torch.no_grad():
+        for value in module.parameters():
+            value.add_(1.0)
+    pipe._remember_base(["1.weight", "0.weight"])  # a second run: 1.weight keeps its first (base) value
+    pipe._head, pipe._bbox_head, pipe.adapter = object(), object(), {"policy": "x"}
+    assert pipe.restore_base() == ["0.weight", "1.bias", "1.weight"]
+    params = dict(module.named_parameters())
+    assert torch.equal(params["1.weight"], base["1.weight"]) and torch.equal(params["1.bias"], base["1.bias"])
+    assert torch.equal(params["0.weight"], base["0.weight"] + 1.0)  # remembered after it changed: its value then is kept
+    assert (pipe._head, pipe._bbox_head, pipe.adapter) == (None, None, None)
 
 
 def test_ttd_m2_byod_rerun_restores_the_base_and_the_experiment_has_its_own_pipeline(notebook):
