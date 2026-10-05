@@ -760,6 +760,10 @@ class TableTransformerDetectionPipeline:
         model.eval()
         for p in model.parameters():
             p.requires_grad_(False)
+        # The weights as this call found them: a failed call puts them back (the transactional contract),
+        # while a successful one starts from the pinned base.
+        current = dict(model.named_parameters())
+        previous_layers = {n: current[n].detach().clone() for n in self._base_layers}
         restored = self.restore_base()
         self._remember_base(names)
 
@@ -868,10 +872,13 @@ class TableTransformerDetectionPipeline:
                             "layers": {n: params[n].detach().clone() for n in names},
                         }
             except BaseException:
-                # Transactional: a failure in training, validation or the progress callback leaves the base
-                # exactly as it was, frozen, with no heads or adapter attached.
+                # Transactional: a failure in training, validation or the progress callback puts the
+                # decoder weights back exactly as this call found them, frozen, with no heads or adapter
+                # attached.
                 with torch.no_grad():
                     for n, value in initial_layers.items():
+                        params[n].copy_(value)
+                    for n, value in previous_layers.items():
                         params[n].copy_(value)
                 for p in model.parameters():
                     p.requires_grad_(False)

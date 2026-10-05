@@ -121,8 +121,11 @@ def test_ttd_m2_adapt_and_load_artifact_restore_the_base_first():
     """The decoder is restored before the frozen features are cached (torch-backed, so checked statically here)."""
     text = PIPELINE.read_text(encoding="utf-8")
     adapt = text[text.index("    def adapt(") : text.index("    def save_artifact(")]
-    order = [adapt.index(m) for m in ("restored = self.restore_base()", "self._remember_base(names)", "cached = [self._decoder_features(", "for epoch in range(1, epochs + 1):")]
+    order = [adapt.index(m) for m in ("previous_layers = {n: current[n].detach().clone() for n in self._base_layers}", "restored = self.restore_base()", "self._remember_base(names)", "cached = [self._decoder_features(", "for epoch in range(1, epochs + 1):")]
     assert order == sorted(order)
+    failure = adapt[adapt.index("except BaseException:") :]
+    # A failed call puts back the weights it found (the model-backed transactional test compares the full state).
+    assert failure.index("for n, value in initial_layers.items():") < failure.index("for n, value in previous_layers.items():") < failure.index("raise")
     load = text[text.index("    def load_artifact(") : text.index("    def from_artifact(")]
     assert load.index("self.restore_base()") < load.index("params[key].copy_(")
     restore = text[text.index("    def restore_base(") : text.index("    @classmethod")]
