@@ -74,6 +74,17 @@ def test_ttd_m1_carried_lock_is_the_committed_lock_and_pins_every_runtime_pin(no
     build.check_lock(build._pins(ROOT), lock_text)
 
 
+def test_ttd_m1_routed_cells_use_the_worker_display_not_ipython(notebook):
+    """Every cell after Section 1 runs in the isolated environment, which has no IPython: a routed cell that imports
+    IPython.display would silently lose its figure. The worker injects `display` into the cell namespace instead."""
+    routed = [c["source"] for c in _code_cells(notebook) if "# dimer: kernel cell" not in c["source"]]
+    assert routed and not [s for s in routed if re.search(r"^\s*(from|import) IPython", s, re.M)]
+    assert sum("display(" in s for s in routed) >= 2
+    kernel = _cell(notebook, "# dimer: kernel cell")
+    assert "_main.__dict__.update(__builtins__=builtins, display=display)" in kernel
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="the worker protocol uses Linux pass_fds (as in rtdetr-detection-pipeline 0feefe5)")
 def test_ttd_m1_section_1_is_idempotent_and_keeps_the_live_worker(notebook, tmp_path, monkeypatch, capsys):
     """The real Section 1 cell, run twice with a stand-in interpreter: the matching environment is reused (no
     download) and the live worker — with every variable later cells created — is kept."""

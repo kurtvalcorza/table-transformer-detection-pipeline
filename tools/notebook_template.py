@@ -322,11 +322,10 @@ TEMPLATE = {
                 "print({{'verdict': report['verdict'], 'metrics': report['metrics'], 'reason': report.get('reason')}})\n"
                 "if report['verdict'] != 'sample-sanity':  # a contract check on the report itself, not a quality claim\n"
                 "    raise RuntimeError(f\"evaluation_report returned verdict {{report['verdict']!r}} for a record with reference boxes\")\n"
-                "try:\n"
-                "    from IPython.display import display\n"
+                "try:  # `display` is provided by the isolated worker (and by any IPython kernel); the worker has no IPython\n"
                 "    display(draw_boxes(image, probe_record['boxes'], low['detections']).reduce(2))\n"
-                "except ImportError:\n"
-                "    print({{'preview': 'IPython display unavailable; the preview PNG is written in Section 9'}})"
+                "except NameError:\n"
+                "    print({{'preview': 'display unavailable; the preview PNG is written in Section 9'}})"
             ),
         },
         {
@@ -546,10 +545,9 @@ TEMPLATE = {
                 "    sheet.paste(panel, (0, y))\n"
                 "    y += panel.height + 8\n"
                 "sheet.save('outputs/{stem}_preview.png')\n"
-                "try:\n"
-                "    from IPython.display import display\n"
+                "try:  # `display` is provided by the isolated worker (and by any IPython kernel)\n"
                 "    display(sheet.reduce(4))\n"
-                "except ImportError:\n"
+                "except NameError:\n"
                 "    pass\n\n"
                 "artifact_dir = Path('outputs/{stem}_adapter')\n"
                 "shutil.rmtree(artifact_dir, ignore_errors=True)\n"
