@@ -721,6 +721,6 @@ TEMPLATE = {
         "- PubTables-1M: Towards Comprehensive Table Extraction From Unstructured Documents (Smock, Pesala, Abraham, 2021): https://arxiv.org/abs/2110.00061\n"
         "- End-to-End Object Detection with Transformers (DETR; the set loss and Hungarian matching, Carion et al., 2020): https://arxiv.org/abs/2005.12872\n"
         "- Open Food Facts nutrition-table detection dataset (boxes, ODbL) and Open Food Facts images (CC BY-SA 3.0, credited to their contributors): https://huggingface.co/datasets/openfoodfacts/nutrition-table-detection — https://world.openfoodfacts.org/data\n"
-        "- DIMER Notebook Specification 2.0 and Model Card Specification 1.1 (fleet specs in the ml-worker repository)"
+        "- DIMER Notebook Specification 2.2 and Model Card Specification 1.1 (fleet specs in the ml-worker repository)"
     ),
 }

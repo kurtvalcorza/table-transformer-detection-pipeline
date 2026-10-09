@@ -74,6 +74,10 @@ def test_ttd_m1_carried_lock_is_the_committed_lock_and_pins_every_runtime_pin(no
     build.check_lock(build._pins(ROOT), lock_text)
 
 
+def test_ttd_s3_declares_notebook_spec_2_2(notebook):
+    assert notebook["metadata"]["dimer"]["notebook_spec"] == "2.2"
+
+
 def test_ttd_m1_routed_cells_use_the_worker_display_not_ipython(notebook):
     """Every cell after Section 1 runs in the isolated environment, which has no IPython: a routed cell that imports
     IPython.display would silently lose its figure. The worker injects `display` into the cell namespace instead."""

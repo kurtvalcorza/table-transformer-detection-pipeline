@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any
 
 GENERATOR_VERSION = "build_notebook.py/2.2"
-NOTEBOOK_SPEC = "2.0"
+NOTEBOOK_SPEC = "2.2"
 
 # ST2: default rewrite rule; a template may replace it with its own `rewrites` list. Every rule must
 # match exactly once across the embedded modules, so a silent no-op is impossible.
