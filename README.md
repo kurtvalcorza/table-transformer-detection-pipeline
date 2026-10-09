@@ -67,7 +67,7 @@ The upstream repository also hosts `pytorch_model.bin`; it is not staged, listed
 
 ## Release status
 
-**Release-grade** — the `E2E` notebook blob `250740ff` (committed at `35d1465`) executed top-to-bottom in a clean Kaggle Tesla T4 runtime on 2026-09-19 (11/11 ok (1 restart after install cell), 1078.1 s); the record is in `docs/release-verification.md` and `STATUS.md`. Static and unit checks — including the standalone generator parity checks — are necessary but were never the evidence; the hosted run is. A later change to the carried modules or the notebook returns the status to Candidate until re-verified.
+**Candidate** — The 2026-09-19 Kaggle T4 run of `35d1465` / blob `250740ff` needed a manual restart after the install cell, so it is not a one-pass `Run all` and not promotion evidence. The 2026-10-05 review-fix blob `ce92c2e9cd95` (commit `770fa1d`) completed one pass with no restart and 0 errors on a fresh Colab Tesla T4 on 2026-10-09 (Colab CLI sequential execution, 13/13 code cells, 1126.8 s; isolated `uv` environment, 48 locked packages; held-out AP@0.5 frozen 0.3179 / selected 0.3315, mAP 0.1438 / 0.1288; reload parity exact); the REL12 BYOD journeys are not exercised yet. The record is in `docs/release-verification.md` and `STATUS.md`. Static and unit checks — including the standalone generator parity checks — are necessary but were never the evidence; the hosted run is. A later change to the carried modules or the notebook returns the status to Candidate until re-verified.
 
 ## Documentation
 

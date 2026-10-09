@@ -1,0 +1,83 @@
+[colab] Parsing notebook '/home/kurt/colab-runs/table-transformer-detection-pipeline-770fa1d-6f0744/table_transformer_detection_colab_770fa1d_colab-cli-t4.ipynb'...
+[colab] Executing cell 1/13 - Infrastructure: build (or reuse) the isolated environment and route later cells to it...
+{'isolated_environment': '/content/dimer_isolated_env_098825a802c1', 'reused': False, 'isolated_python': '3.12.12', 'kernel_python': '3.13.15', 'locked_packages': 48, 'setup_seconds': 62}
+{'routed_to': '/content/dimer_isolated_env_098825a802c1/bin/python', 'worker_pid': 4808, 'worker_reused': False}
+[colab] Executing cell 2/13 - Infrastructure: record the runtime...
+{'notebook_source': {'repository': 'table-transformer-detection-pipeline', 'repository_revision': '67c5153027b326fbfaca4715ca641c201a0d7947', 'embedded_module': 'src/table_transformer_detection_pipeline/pipeline.py', 'embedded_modules': ['src/table_transformer_detection_pipeline/pipeline.py', 'src/table_transformer_detection_pipeline/metrics.py', 'src/table_transformer_detection_pipeline/samples.py'], 'module_sha256': 'a31d95f04e569809ea5ed4ec1631ff58022c648fb36462f68e33fa44bb7cee38', 'generator': 'build_notebook.py/2.2', 'notebook_spec': '2.2'}, 'python': '3.12.12', 'executable': '/content/dimer_isolated_env_098825a802c1/bin/python', 'torch': '2.14.0+cu130', 'transformers': '4.57.6', 'timm': '1.0.29', 'cuda': True}
+[colab] Executing cell 3/13 - table_transformer_detection-08...
+[colab] Executing cell 4/13 - table_transformer_detection-10...
+[colab] Executing cell 5/13 - table_transformer_detection-12...
+[colab] Executing cell 6/13 - Infrastructure: stage and digest-verify the pinned snapshot, then load the model...
+{'model_id': 'microsoft/table-transformer-detection', 'revision': '2357cbe2b5a5d1c03e54f32764f06058933b65ab', 'license': 'mit', 'files': 4, 'total_bytes': 115320191}
+{'weights_dir': '/content/weights/table-transformer-detection', 'fetched': ['README.md', 'config.json', 'model.safetensors', 'preprocessor_config.json']}
+{'verified_files': 4, 'revision': '2357cbe2b5a5d1c03e54f32764f06058933b65ab'}
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+The `max_size` parameter is deprecated and will be removed in v4.26. Please specify in `size['longest_edge'] instead`.
+Some weights of the model checkpoint at /content/weights/table-transformer-detection were not used when initializing TableTransformerForObjectDetection: ['model.backbone.conv_encoder.model.layer2.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer3.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer4.0.downsample.1.num_batches_tracked']
+- This IS expected if you are initializing TableTransformerForObjectDetection from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing TableTransformerForObjectDetection from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+{'device': 'cuda:0', 'source': 'local-snapshot'}
+[colab] Executing cell 7/13 - table_transformer_detection-16...
+{'data_source': 'Open Food Facts nutrition-table photographs (openfoodfacts/nutrition-table-detection v1.1 validation split (Hugging Face Hub commit d59dcee8), served originals pinned 2026-09-19; CC BY-SA 3.0 (Open Food Facts images; boxes from the Open Food Facts dataset, ODbL))', 'raw': {'photographs': 121, 'products': 119, 'boxes': 127, 'dropped_slivers': 1}, 'splits': {'train': 72, 'validation': 24, 'test': 25}, 'split_summary': {'train': {'images': 72, 'boxes': 76, 'products': 71}, 'validation': {'images': 24, 'boxes': 25, 'products': 24}, 'test': {'images': 25, 'boxes': 26, 'products': 24}}, 'fetch_seconds': 466.6, 'corpus_bytes': 129318620}
+{'train': {'n': 72, 'boxes': 76, 'boxes_per_image': {'min': 1, 'max': 3}, 'image_side': {'min': 640, 'max': 1280}, 'box_area_fraction': {'min': 0.0016, 'max': 0.9999}, 'digest': '075316de33b887a7...'}}
+{'validation': {'n': 24, 'boxes': 25, 'boxes_per_image': {'min': 1, 'max': 2}, 'image_side': {'min': 788, 'max': 1280}, 'box_area_fraction': {'min': 0.0442, 'max': 1.0}, 'digest': 'c7263afb15866c20...'}}
+{'test': {'n': 25, 'boxes': 26, 'boxes_per_image': {'min': 1, 'max': 2}, 'image_side': {'min': 997, 'max': 1280}, 'box_area_fraction': {'min': 0.0011, 'max': 1.0}, 'digest': 'b335035fa295e2b6...'}}
+{'example': {'id': 'train-000', 'barcode': '26212630', 'categories': ['nutrition-table'], 'image_url': 'https://static.openfoodfacts.org/images/products/26212630/6.jpg', 'source_size': [1315, 964]}, 'size': (1280, 938), 'boxes': [[0.0, 5.8, 1268.3, 734.6]]}
+{'probe': 'duplicate id', 'rejected': "duplicate id 'same'"}
+{'probe': 'box outside image', 'rejected': 'records[0]: boxes[0] [0.0, 0.0, 1285.0, 50.0] must lie inside the (1280, 938) image with x0 < x1 and y0 < y1'}
+{'probe': 'oversized image', 'rejected': 'records[0]: image side outside 16..MAX_IMAGE_SIDE=4096 px: (4097, 8)'}
+{'probe': 'no boxes', 'rejected': 'records[0]: boxes must be a list of 1..15 [x_min, y_min, x_max, y_max] boxes'}
+[colab] Executing cell 8/13 - table_transformer_detection-19...
+{'ceilings': {'MIN_IMAGE_SIDE': 16, 'MAX_IMAGE_SIDE': 4096, 'MAX_DETECTIONS': 15, 'LABELS': ['table', 'table rotated'], 'DETECTION_THRESHOLD': 0.9}, 'contract': {'NUM_QUERIES': 15, 'D_MODEL': 256, 'DECODER_LAYERS': 6, 'PARAMETER_COUNT': 28799431}}
+{'probe_id': 'test-000', 'reference_boxes': 1, 'detections_at_threshold': 0, 'detections_at_0.05': 1, 'seconds': 0.808, 'device': 'cuda:0', 'checks': {'at_most_num_queries': True, 'labels_in_vocabulary': True, 'scores_descending': True, 'boxes_inside_image': True}, 'findings': 1}
+{'verdict': 'sample-sanity', 'metrics': [{'id': 'box_iou', 'reference': 'table-0', 'value': 0.47393826433115277, 'matched_label': 'table', 'estimation': 'one reference box per table on a single page, no dispersion estimate'}], 'reason': '1 reference box(es) on one tutorial page; geometry sanity evidence, not a detection benchmark'}
+<PIL.Image.Image image mode=RGB size=475x640 at 0x7D515418D8E0>
+
+[Image saved to: /tmp/tmp64a7unfd.png]
+[colab] Executing cell 9/13 - table_transformer_detection-22...
+{'fixed_box_prior': {'ap50': 0.0266, 'ap75': 0.0, 'map': 0.0054, 'recall_at_0.9': 0.1154, 'recall_at_0.5': 0.1154, 'precision_at_0.5': 0.12, 'mean_best_iou': 0.3155, 'n': 25}, 'baseline': "one box per image at the training split's mean normalised reference box (fixed-box prior)", 'prior_box_normalised': [0.175, 0.269, 0.75, 0.713]}
+{'zero_shot': {'ap50': 0.0967, 'ap75': 0.0017, 'map': 0.029, 'recall_at_0.9': 0.0385, 'recall_at_0.5': 0.0385, 'precision_at_0.5': 0.2, 'mean_best_iou': 0.4887, 'n': 25}, 'policy': 'zero-shot checkpoint (PubTables heads, table + table rotated mass as the score)', 'seconds': 2.2}
+{'frozen_policy': 'frozen backbone, encoder and decoder + new heads', 'head_final_loss': 1.0115, 'validation': {'n': 24, 'loss': 3.380755434433619, 'ap50': 0.200162, 'map': 0.06629, 'recall_at_threshold': 0.0}, 'seconds': 167.7}
+{'frozen_policy_test': {'ap50': 0.3179, 'ap75': 0.0681, 'map': 0.1438, 'recall_at_0.9': 0.0, 'recall_at_0.5': 0.6923, 'precision_at_0.5': 0.1406, 'mean_best_iou': 0.5968, 'n': 25}, 'loss': 2.5197, 'verdict': 'measured-small-sample'}
+{'definitions': {'ap50': 'average precision at IoU 0.50 over all ranked predictions of all images (one class)', 'ap75': 'average precision at IoU 0.75', 'map': 'mean of the average precision at IoU 0.50, 0.55, ..., 0.95 (the COCO primary metric, one class)', 'recall_at_threshold': 'fraction of reference boxes matched (IoU >= 0.5) by a detection at or above the operating threshold', 'precision_at_threshold': 'fraction of detections at or above the operating threshold that match a reference box', 'mean_best_iou': 'mean over reference boxes of the IoU of their best-overlapping prediction, any score', 'operating_points': 'recall / precision / surviving detections at the operating threshold and at 0.5'}}
+{'frozen_vs_prior': 'frozen policy above the fixed-box prior on AP@0.5'}
+[colab] Executing cell 10/13 - table_transformer_detection-25...
+{'epoch': 1, 'stage': 'unfrozen last 2 decoder layers + new heads', 'train_loss': 1.8019, 'val_loss': 3.3531, 'val_ap50': 0.2356, 'val_map': 0.0771}
+{'epoch': 2, 'stage': 'unfrozen last 2 decoder layers + new heads', 'train_loss': 1.6901, 'val_loss': 3.4795, 'val_ap50': 0.2147, 'val_map': 0.068}
+{'epoch': 3, 'stage': 'unfrozen last 2 decoder layers + new heads', 'train_loss': 1.739, 'val_loss': 3.3787, 'val_ap50': 0.2342, 'val_map': 0.0644}
+{'epoch': 0, 'stage': 'new heads on frozen decoder features', 'train_loss': 1.0115, 'val_loss': 3.3808, 'val_ap50': 0.2002, 'val_map': 0.0663}
+{'selected_policy': 'unfrozen last 2 decoder layers + new heads', 'best_epoch': 1, 'selection': 'lowest validation DETR loss (epoch 0 = new heads on frozen features)', 'trainable_heads': 133126, 'trainable_layers': 3157504, 'total_parameters': 28799431, 'seconds': 195.6}
+[colab] Executing cell 11/13 - table_transformer_detection-28...
+{'ap50': {'fixed_box_prior': 0.0266, 'zero_shot': 0.0967, 'frozen_policy': 0.3179, 'selected_policy': 0.3315}}
+{'ap75': {'fixed_box_prior': 0.0, 'zero_shot': 0.0017, 'frozen_policy': 0.0681, 'selected_policy': 0.0659}}
+{'map': {'fixed_box_prior': 0.0054, 'zero_shot': 0.029, 'frozen_policy': 0.1438, 'selected_policy': 0.1288}}
+{'mean_best_iou': {'fixed_box_prior': 0.3155, 'zero_shot': 0.4887, 'frozen_policy': 0.5968, 'selected_policy': 0.6036}}
+{'recall_at_0.5': {'fixed_box_prior': 0.1154, 'zero_shot': 0.0385, 'frozen_policy': 0.6923, 'selected_policy': 0.6538}}
+{'precision_at_0.5': {'fixed_box_prior': 0.12, 'zero_shot': 0.2, 'frozen_policy': 0.1406, 'selected_policy': 0.1241}}
+{'recall_at_0.9': {'fixed_box_prior': 0.1154, 'zero_shot': 0.0385, 'frozen_policy': 0.0, 'selected_policy': 0.0}}
+{'loss': {'frozen_policy': 2.5197, 'selected_policy': 2.5167}}
+{'delta_vs_frozen': {'ap50': 0.0136, 'ap75': -0.0022, 'map': -0.0149}}
+{'delta_vs_zero_shot': {'ap50': 0.2348, 'ap75': 0.0642, 'map': 0.0998}}
+{'selected_policy': 'unfrozen last 2 decoder layers + new heads'}
+{'verdicts': {'frozen_vs_prior': 'frozen policy above the fixed-box prior on AP@0.5', 'selected_above_prior_ap50': True, 'selected_vs_frozen_ap50': 'improved', 'selected_vs_frozen_map': 'worse'}}
+{'verdicts': {'frozen_vs_prior': 'frozen policy above the fixed-box prior on AP@0.5', 'selected_above_prior_ap50': True, 'selected_vs_frozen_ap50': 'improved', 'selected_vs_frozen_map': 'worse'}}
+{'report': 'outputs/table_transformer_detection_evaluation_report.json'}
+[colab] Executing cell 12/13 - table_transformer_detection-31...
+Some weights of the model checkpoint at /content/weights/table-transformer-detection were not used when initializing TableTransformerForObjectDetection: ['model.backbone.conv_encoder.model.layer2.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer3.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer4.0.downsample.1.num_batches_tracked']
+- This IS expected if you are initializing TableTransformerForObjectDetection from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing TableTransformerForObjectDetection from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+{'id': 'test-000', 'reference_boxes': 1, 'frozen_detections': 2, 'frozen_best_iou': 0.3324, 'selected_detections': 3, 'selected_best_iou': 0.358, 'pubtables_detections_at_0.05': 5, 'image_url': 'https://static.openfoodfacts.org/images/products/001/600/010/6406/2.jpg'}
+{'id': 'test-001', 'reference_boxes': 1, 'frozen_detections': 4, 'frozen_best_iou': 0.5745, 'selected_detections': 4, 'selected_best_iou': 0.5918, 'pubtables_detections_at_0.05': 5, 'image_url': 'https://static.openfoodfacts.org/images/products/328/423/000/2240/2.jpg'}
+{'id': 'test-002', 'reference_boxes': 1, 'frozen_detections': 3, 'frozen_best_iou': 0.6238, 'selected_detections': 4, 'selected_best_iou': 0.5854, 'pubtables_detections_at_0.05': 3, 'image_url': 'https://static.openfoodfacts.org/images/products/007/341/600/6102/2.jpg'}
+<PIL.Image.Image image mode=RGB size=642x884 at 0x7D516088F4A0>
+
+[Image saved to: /tmp/tmp5__kt6vh.png]
+{'artifact': 'outputs/table_transformer_detection_adapter', 'format': 'org.valcorza.table-transformer-detection.adapter.v1', 'policy': 'unfrozen last 2 decoder layers + new heads', 'classes': ['nutrition-table'], 'tensors': 60, 'bytes': 13169120, 'sha256': '7c8725236d1ddf6f...'}
+Some weights of the model checkpoint at /content/weights/table-transformer-detection were not used when initializing TableTransformerForObjectDetection: ['model.backbone.conv_encoder.model.layer2.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer3.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer4.0.downsample.1.num_batches_tracked']
+- This IS expected if you are initializing TableTransformerForObjectDetection from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing TableTransformerForObjectDetection from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+{'reload_parity': {'queries_identical': True, 'ap50_in_memory': 0.331495, 'ap50_reloaded': 0.331495, 'classes_identical': True}, 'reloaded_policy': 'unfrozen last 2 decoder layers + new heads', 'reloaded_best_epoch': 1}
+['table_transformer_detection_adapter', 'table_transformer_detection_evaluation_report.json', 'table_transformer_detection_input_manifest.json', 'table_transformer_detection_preview.png', 'table_transformer_detection_result.json', 'table_transformer_detection_train.csv']
+[colab] Executing cell 13/13 - table_transformer_detection-34...
+{'experiment': 'skipped (RUN_EXPERIMENT = False); the default path above is complete'}
+[colab] Saving notebook with outputs to '/home/kurt/colab-runs/table-transformer-detection-pipeline-770fa1d-6f0744/table_transformer_detection_colab_770fa1d_colab-cli-t4_output.ipynb'...
