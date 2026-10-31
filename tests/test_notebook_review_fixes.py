@@ -350,9 +350,9 @@ def test_ttd_m1_byod_path_runs_section_4_outside_colab_from_the_base(notebook, t
 def test_ttd_m1_upload_outside_colab_cancelled_and_bad_path_are_explained(notebook, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setitem(sys.modules, "google", None)
-    with pytest.raises(RuntimeError, match="upload dialog exists only in Google Colab"):
+    with pytest.raises(ValueError, match="upload dialog exists only in Google Colab"):  # DAT20: a BYODRefusal
         exec(_section_4(notebook, ""), _section_4_namespace([]))
-    with pytest.raises(FileNotFoundError, match="BYOD_PATH 'nowhere.zip' does not exist"):
+    with pytest.raises(ValueError, match="nowhere.zip: BYOD_PATH 'nowhere.zip' does not exist"):  # DAT20: a BYODRefusal
         exec(_section_4(notebook, "nowhere.zip"), _section_4_namespace([]))
     for uploaded, message in (({}, "received 0"), ({"a.zip": b"", "b.zip": b""}, "received 2")):
         google, colab, files = (types.ModuleType(n) for n in ("google", "google.colab", "google.colab.files"))

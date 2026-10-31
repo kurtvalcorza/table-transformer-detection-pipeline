@@ -1,0 +1,71 @@
+{
+  "repo": "table-transformer-detection-pipeline",
+  "sha": "cd457809fa8d3e2a2e2f651ba417778dcf06a744",
+  "notebook": "tutorials/table_transformer_detection_colab.ipynb",
+  "blob": "1829d8dbea7927bb19382baf7526f40e05a0b7d0",
+  "gpu": "T4",
+  "session": "suite-table-cd45780-6f07",
+  "started_utc": "2026-10-29T23:11:31+00:00",
+  "runner": "Colab CLI `colab exec -f` on a fresh session (not a browser Run all)",
+  "overrides": [
+    {
+      "name": "USE_BYOD",
+      "from": "False",
+      "to": "True"
+    },
+    {
+      "name": "BYOD_PATH",
+      "from": "''",
+      "to": "'/etc'"
+    }
+  ],
+  "run_copy_blob": "057cb1a95dfc8a6a7bdb5321a84b99ba2a6a6178",
+  "run_copy_sha256": "41c0f62b39c4bada49a2cae5aaca6b9af70d25de7d2c9614e606f12bb3be9bdc",
+  "run_copy_note": "refusal run: the run copy is the committed notebook with the listed assignment overrides, cut immediately after the refusal cell and re-serialised (nbformat layout); input_unchanged compares against that copy",
+  "truncated_after_cell": "table_transformer_detection-16",
+  "refusal_cell_ref": "table_transformer_detection-16",
+  "refusal_cell_index": 7,
+  "cells_dropped": 20,
+  "code_cells_dropped": 6,
+  "original_sha256": "ab84cca004646c2b687d0858f1fd87d2243c10055f4aa02b2d2ce980747da484",
+  "status": "[suite-table-cd45780-6f07] gpu-t4-s-euw4c0-2hb9yypsmuxj8 | Hardware: T4 | Shape: Standard | Variant: GPU | Status: IDLE",
+  "exec_exit_code": 0,
+  "stopped": true,
+  "stop_verified": true,
+  "wall_s": 85.3,
+  "input_unchanged": true,
+  "executed_file": "table_transformer_detection_colab_cd45780_colab-cli-t4_output.ipynb",
+  "log_cells": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "log_total": 7,
+  "code_cells": 7,
+  "executed_cells": 4,
+  "errors": [
+    {
+      "cell": "table_transformer_detection-16",
+      "ename": "IsolatedCellRefusal",
+      "evalue": "etc: BYOD folder must contain boxes.csv; fix the input and run this cell again (the earlier results of this session were removed)."
+    }
+  ],
+  "execution_counts": [],
+  "sequential": null,
+  "executed_sha256": "40bdc514ab2604534f7419c9563dd09c8eee0b92dfdafa4ceda255c46ed8840e",
+  "log_sequential_complete": true,
+  "mode": "expect_refusal",
+  "refusal_line": "Refused: etc: BYOD folder must contain boxes.csv; fix the input and run this cell again (the earlier results of this session were removed).",
+  "halting_cell_index": 7,
+  "halting_cell_id": "table_transformer_detection-16",
+  "error_cells": [
+    7
+  ],
+  "refusal_fail_reasons": [],
+  "refusal_ok": true,
+  "verdict": "PASS"
+}
